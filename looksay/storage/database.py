@@ -95,9 +95,13 @@ class Database:
     # ------------------------------------------------------------------ setup
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
-        conn.execute("PRAGMA journal_mode=WAL" if self.path != ":memory:" else "PRAGMA journal_mode=MEMORY")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL" if self.path != ":memory:" else "PRAGMA journal_mode=MEMORY")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except sqlite3.DatabaseError:
+            conn.close()  # Windows cannot move a file that is still open
+            raise
         return conn
 
     def _open(self) -> sqlite3.Connection:
