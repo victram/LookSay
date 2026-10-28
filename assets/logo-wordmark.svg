@@ -20,11 +20,6 @@
     <line x1="228" y1="326" x2="284" y2="326"/>
   </g>
   <rect x="226" y="172" width="60" height="100" rx="30" fill="#fff"/>
-  <g stroke="#000" stroke-width="6" stroke-linecap="round">
-    <line x1="238" y1="204" x2="274" y2="204"/>
-    <line x1="238" y1="222" x2="274" y2="222"/>
-    <line x1="238" y1="240" x2="274" y2="240"/>
-  </g>
   <!-- Eye outline drawn last so it sits on top of the iris edge -->
   <path d="M36 256 C130 110 382 110 476 256 C382 402 130 402 36 256 Z" fill="none" stroke="#000"
         stroke-width="22" stroke-linejoin="round"/>
