@@ -310,3 +310,41 @@ def test_nose_calibration_overlay_fits_head_model(qapp, monkeypatch):
     assert overlay.state == "done"
     overlay.accept_btn.click()
     assert isinstance(results[0], HeadModel) and results[0].fit_error < 0.02
+
+
+def test_selections_refine_the_model_unless_corrected(window, qapp):
+    from tests.test_tracking import _synthetic_session, _vector
+
+    w = window
+    w.settings.set("pointer_mode", "eyes_head")
+    session = _synthetic_session(9)
+    w.calib_session = session
+    w.estimator.model = session.fit()
+    rng = np.random.default_rng(0)
+    now = time.monotonic()
+    btn = key(w, "a")
+    for _ in range(4):
+        w._recent_vectors = [(now, _vector(0.2, 0.6, rng)) for _ in range(5)]
+        w._queue_learning_sample(btn)
+    w._on_key("backspace", "")  # a correction discards pending samples
+    assert w._pending_samples == []
+    model_before = w.estimator.model
+    model_before.fit_error = 1.0  # pretend the current model is poor, so the refit is adopted
+    for _ in range(5):
+        w._recent_vectors = [(now, _vector(0.2, 0.6, rng)) for _ in range(5)]
+        w._queue_learning_sample(btn)
+    w._confirm_learning_sample(now + 10)
+    assert len(session.extra) == 5
+    assert w.estimator.model is not model_before  # refitted after 5 confirmed samples
+
+
+def test_sticky_keys_keep_the_target_near_its_border(window, qapp):
+    w = window
+    b = key(w, "g")
+    r = b.mapTo(w, b.rect().center())
+    gaze(w, qapp, r.x() / w.width(), r.y() / w.height(), 0.2)  # start dwelling on G
+    assert w._dwell_button is b
+    edge = b.mapTo(w, b.rect().topRight())
+    x = (edge.x() + b.width() * 0.15) / w.width()  # 15% past the right edge (over H)
+    gaze(w, qapp, x, r.y() / w.height(), 0.6)
+    assert w.buffer.text == "G"

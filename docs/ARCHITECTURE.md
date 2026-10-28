@@ -70,6 +70,22 @@ flowchart LR
   the user. It is more honest than the training error. The result screen
   draws each target and where the model placed the gaze. 5, 9 and 13 points
   are available.
+- **More calibration data.** After the fixation points, the user follows
+  a dot moving along a Lissajous path for 14 s. The eye/pipeline lag (about
+  100–250 ms) is estimated by testing lags from 0 to 0.33 s against a
+  linear fit, and the aligned samples are added at half weight. This gives
+  hundreds of distinct targets instead of 13. Pursuit samples near a
+  left-out point are excluded from that cross-validation fold, so the
+  reported error stays honest.
+- **Keeps learning while typing.** Every gaze selection stores the median
+  feature vector of the previous 0.3 s with the key centre as target. If no
+  correction (delete, delete word, undo, clear) follows within 3 s, it
+  becomes a training sample. The model is refitted every 5 samples and
+  adopted only if its validated error is not worse. The training data is
+  saved with the profile, so learning continues after a restart.
+- **Sticky keys.** The current dwell target is kept while the cursor stays
+  within 25% of the key's size around it, so jitter at a border does not
+  restart the dwell on the neighbouring key.
 - **Pointer fusion (eyes + nose).** The head cue is the nose tip relative to
   the face outline (plus 3D yaw and pitch). It moves when the head turns or
   tilts, not when the head shifts. In the default eyes+nose mode the cursor

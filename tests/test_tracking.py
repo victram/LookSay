@@ -324,3 +324,40 @@ def test_cursor_animator_moves_smoothly_between_camera_frames():
     assert all(d > 0 for d in steps)  # moves every UI frame, never backwards
     assert max(steps) < 0.3  # no single big jump
     assert xs[-1] > 0.99  # arrives within half a second
+
+
+def test_pursuit_alignment_finds_the_lag_and_improves_the_model():
+    from looksay.calibration.model import PURSUIT_WEIGHT, align_pursuit, pursuit_path
+
+    rng = np.random.default_rng(3)
+
+    def curved(tx, ty):  # real eye -> screen mappings are curved towards the edges
+        v = _vector(tx, ty, rng)
+        bend = 0.04 * (tx - 0.5) ** 2 + 0.03 * (ty - 0.5) ** 2
+        v[[0, 2]] += bend
+        v[[1, 3]] += 0.03 * (tx - 0.5) * (ty - 0.5)
+        return v
+
+    duration, true_lag = 14.0, 0.165
+    samples = [(i / 30, curved(*pursuit_path(i / 30 - true_lag, duration))) for i in range(int(duration * 30))]
+    pairs, lag = align_pursuit(samples, duration)
+    assert abs(lag - true_lag) <= 0.034
+    assert len(pairs) > 300
+    session = CalibrationSession(calibration_targets(5))
+    for i, (tx, ty) in enumerate(session.targets):
+        for _ in range(20):
+            session.add_sample(i, curved(tx, ty))
+    before = session.fit()
+    for vec, target in pairs:
+        session.add_extra(vec, target, PURSUIT_WEIGHT)
+    after = session.fit()
+    assert not before.quadratic and after.quadratic
+    assert after.fit_error < before.fit_error
+
+
+def test_session_serialisation_roundtrip_with_extras():
+    session = _synthetic_session(9)
+    session.add_extra(_vector(0.3, 0.3, np.random.default_rng(0)), (0.3, 0.3), 1.0)
+    clone = CalibrationSession.from_dict(session.to_dict())
+    assert len(clone.extra) == 1 and set(clone.samples) == set(session.samples)
+    assert clone.fit().fit_error == pytest.approx(session.fit().fit_error, rel=1e-3)

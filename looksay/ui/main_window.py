@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QCursor, QImage, QKeySequence, QPixmap, QShort
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout, QWidget
 
 from looksay.calibration.head_model import HeadModel
-from looksay.calibration.model import GazeModel
+from looksay.calibration.model import CalibrationSession, GazeModel
 from looksay.diagnostics.stats import RateCounter
 from looksay.i18n.strings import LANGUAGES, tr
 from looksay.input.dwell import DwellSelector
@@ -42,6 +42,13 @@ MOUSE_PRIORITY_S = 1.5  # in "both" mode, mouse movement overrides gaze for this
 STALE_FEATURES_S = 0.6
 MESSAGE_S = 5.0
 WORD_GRID_SIZE = 15
+# Online refinement: a gaze selection becomes a calibration sample if it is
+# not corrected (delete/undo) within CONFIRM_S; the model is refitted every
+# REFIT_EVERY confirmed samples.
+CONFIRM_S = 3.0
+REFIT_EVERY = 5
+CORRECTION_KEYS = {"backspace", "delete_word", "undo", "clear"}
+STICKY_MARGIN = 0.25  # keep the current key while the cursor is within this fraction of its size around it
 PREVIEW_W = 200
 
 CAMERA_KEYS = {"camera_index", "camera_resolution", "camera_fps"}
@@ -65,6 +72,10 @@ class MainWindow(QWidget):
         self.estimator = GazeEstimator()
         self.blink = BlinkDetector()
         self.cursor_animator = CursorAnimator()
+        self.calib_session: CalibrationSession | None = None
+        self._recent_vectors: list[tuple[float, np.ndarray]] = []
+        self._pending_samples: list[tuple[float, np.ndarray, tuple[float, float]]] = []
+        self._confirmed_samples = 0
         self.click_sound: ClickSound | None = None
         self.ui_fps = RateCounter()
         self.worker = None
@@ -421,7 +432,9 @@ class MainWindow(QWidget):
         if profile:
             try:
                 self.estimator.set_model(GazeModel.from_dict(profile["model"]))
-            except (ValueError, KeyError) as exc:
+                if "session" in profile["model"]:
+                    self.calib_session = CalibrationSession.from_dict(profile["model"]["session"])
+            except (ValueError, KeyError, TypeError) as exc:
                 log.warning("Ignoring unusable calibration profile: %s", exc)
         head = self.settings.get("_head_model")
         if head:
@@ -432,6 +445,7 @@ class MainWindow(QWidget):
 
     def _on_features(self, features: FaceFeatures) -> None:
         self.last_features = features
+        self._remember_vector(features)
         if (not self.estimator.ready and not self._auto_calibrated and features.face_found
                 and not self.calibration.isVisible() and not self.confirm.isVisible()):
             # First use: calibrate as soon as a face is visible, so no caregiver is needed.
@@ -462,13 +476,57 @@ class MainWindow(QWidget):
         elif model is not None:
             screen = (self.width(), self.height())
             error_px = model.error_px(*screen)
+            self.calib_session = self.calibration.session
             self.db.save_calibration(datetime.now().strftime("%Y-%m-%d %H:%M"), model.version,
-                                     len(self.calibration.targets), screen, error_px, model.to_dict())
+                                     len(self.calibration.targets), screen, error_px, self._model_record(model))
             self.estimator.set_model(model)
+            self._confirmed_samples = 0
         elif self.calibration.mode == "full":
             self.estimator.set_model(self._model_before_calibration)
         self.dwell.reset()
         self.refresh()
+
+    def _model_record(self, model: GazeModel) -> dict:
+        record = model.to_dict()
+        if self.calib_session is not None:
+            record["session"] = self.calib_session.to_dict()  # lets the model keep learning after restarts
+        return record
+
+    # ---------------------------------------------------- online refinement
+    def _remember_vector(self, features: FaceFeatures) -> None:
+        vec = features.vector(self.estimator.eye) if features.face_found and not features.eyes_closed() else None
+        if vec is not None and features.confidence >= self.estimator.confidence_threshold:
+            self._recent_vectors.append((features.timestamp, vec))
+        cutoff = features.timestamp - 0.3
+        self._recent_vectors = [(t, v) for t, v in self._recent_vectors if t >= cutoff]
+
+    def _queue_learning_sample(self, button: GazeButton) -> None:
+        if (not self.settings["learn_from_selections"] or self.calib_session is None
+                or self.estimator.mode == "head" or len(self._recent_vectors) < 3):
+            return
+        center = button.mapTo(self, button.rect().center())
+        target = (center.x() / self.width(), center.y() / self.height())
+        vec = np.median(np.array([v for _, v in self._recent_vectors]), axis=0)
+        self._pending_samples.append((time.monotonic(), vec, target))
+
+    def _confirm_learning_sample(self, now: float) -> None:
+        refit = False
+        while self._pending_samples and now - self._pending_samples[0][0] >= CONFIRM_S:
+            _, vec, target = self._pending_samples.pop(0)
+            self.calib_session.add_extra(vec, target, 1.0)
+            self._confirmed_samples += 1
+            refit = refit or self._confirmed_samples % REFIT_EVERY == 0
+        if not refit:
+            return
+        model = self.calib_session.fit()
+        current = self.estimator.model
+        # Only adopt a refit that does not validate worse than what we have.
+        if model is not None and (current is None or model.fit_error <= current.fit_error * 1.1):
+            offset = self.estimator.offset.copy()
+            self.estimator.model = model
+            self.estimator.offset = offset * 0.5  # the refit absorbs part of the drift
+            self.db.update_active_calibration(model.error_px(self.width(), self.height()), self._model_record(model))
+            log.info("Gaze model refined from %d selections", self._confirmed_samples)
 
     def _recentered(self, target: tuple, observed: np.ndarray) -> None:
         self.estimator.recenter(target, observed)
@@ -480,6 +538,7 @@ class MainWindow(QWidget):
         self._model_before_calibration = self.estimator.model
         self._head_before_calibration = self.estimator.head_model
         self.dwell.reset()
+        self.calibration.pursuit_enabled = self.settings["calibration_pursuit"]
         self.calibration.start(self.settings["calibration_points"], self.settings["tracking_eye"], mode)
         self.gaze_cursor.raise_()
 
@@ -505,6 +564,13 @@ class MainWindow(QWidget):
         pos = self.cursor_animator.step(np.array([sample.x, sample.y]), now)
         point = QPointF(pos[0] * self.width(), pos[1] * self.height())
         return point, "gaze", sample.usable, sample.state == "blink"
+
+    def _in_active_layer(self, button: GazeButton) -> bool:
+        """False for buttons hidden behind an open confirmation or calibration overlay."""
+        for overlay in (self.confirm, self.calibration):
+            if overlay.isVisible():
+                return overlay.isAncestorOf(button)
+        return True
 
     def _target_at(self, point: QPointF | None) -> GazeButton | None:
         if point is None or not self.rect().contains(point.toPoint()):
@@ -533,7 +599,16 @@ class MainWindow(QWidget):
         point, source, active, hold = self._current_point(now)
         self._last_source = source
         target = self._target_at(point) if active or hold else None
+        current_btn = self._dwell_button
+        if (target is not current_btn and current_btn is not None and point is not None and current_btn.isVisible()
+                and current_btn.isEnabled() and not self.paused and self._in_active_layer(current_btn)):
+            # Sticky keys: small wobbles across the border do not switch to the neighbour.
+            r = current_btn.rect()
+            mx, my = int(r.width() * STICKY_MARGIN), int(r.height() * STICKY_MARGIN)
+            if r.adjusted(-mx, -my, mx, my).contains(current_btn.mapFrom(self, point.toPoint())):
+                target = current_btn
         state = self.dwell.update(target, now, active=active, hold=hold)
+        self._confirm_learning_sample(now)
         current = state.target if isinstance(state.target, GazeButton) else None
         if current is not self._dwell_button and self._dwell_button is not None:
             self._dwell_button.set_dwell(False, 0.0)
@@ -555,6 +630,8 @@ class MainWindow(QWidget):
                 self._update_debug_info()
 
     def _activate(self, button: GazeButton, from_gaze: bool) -> None:
+        if from_gaze:
+            self._queue_learning_sample(button)
         if from_gaze and self.settings["auto_drift"]:
             center = button.mapTo(self, button.rect().center())
             self.estimator.nudge_towards((center.x() / self.width(), center.y() / self.height()))
@@ -631,6 +708,8 @@ class MainWindow(QWidget):
         self.keyboard.update_case(self.buffer.shift_active or (capitalize and not prefix))
 
     def _on_key(self, name: str, value: str) -> None:
+        if name in CORRECTION_KEYS:
+            self._pending_samples.clear()  # recent selections were probably wrong: do not learn from them
         b = self.buffer
         if name == "char":
             b.insert_char(value)

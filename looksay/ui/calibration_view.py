@@ -11,7 +11,8 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from looksay.calibration.head_model import fit_head_model
-from looksay.calibration.model import MIN_SAMPLES_PER_POINT, CalibrationSession, GazeModel, calibration_targets
+from looksay.calibration.model import (MIN_SAMPLES_PER_POINT, PURSUIT_WEIGHT, CalibrationSession, GazeModel,
+                                       align_pursuit, calibration_targets, pursuit_path)
 from looksay.i18n.strings import tr
 from looksay.tracking.features import FaceFeatures
 from looksay.ui.widgets import GazeButton
@@ -20,6 +21,8 @@ INTRO_S = 2.5
 SETTLE_S = 0.8
 COLLECT_S = 1.5
 MAX_COLLECT_S = 3.5
+PURSUIT_INTRO_S = 2.0
+PURSUIT_S = 14.0
 
 
 class CalibrationOverlay(QWidget):
@@ -46,6 +49,9 @@ class CalibrationOverlay(QWidget):
         self.index = 0
         self._state_t = 0.0
         self._recenter_samples: list[np.ndarray] = []
+        self._pursuit_samples: list[tuple[float, np.ndarray]] = []
+        self.pursuit_enabled = True
+        self.pursuit_lag = 0.0
         self.model: GazeModel | None = None
 
         root = QVBoxLayout(self)
@@ -81,6 +87,7 @@ class CalibrationOverlay(QWidget):
             self.targets = calibration_targets(n_points)
         self.session = CalibrationSession(self.targets, eye=eye)
         self._recenter_samples = []
+        self._pursuit_samples = []
         self.index = 0
         self.model = None
         self.setGeometry(self.parentWidget().rect())
@@ -92,7 +99,7 @@ class CalibrationOverlay(QWidget):
 
     @property
     def collecting(self) -> bool:
-        return self.isVisible() and self.state in ("intro", "settle", "collect")
+        return self.isVisible() and self.state in ("intro", "settle", "collect", "pursuit_intro", "pursuit")
 
     def _set_state(self, state: str) -> None:
         self.state = state
@@ -107,11 +114,19 @@ class CalibrationOverlay(QWidget):
             key = {"recenter": "calib_recenter", "head": "calib_head_intro"}.get(self.mode, "calib_intro")
             self.message.setText(tr(key, self.lang))
             self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        elif state in ("settle", "collect"):
+        elif state == "pursuit_intro":
+            self.message.setText(tr("calib_pursuit_intro", self.lang))
+        elif state in ("settle", "collect", "pursuit"):
             self.message.setText("")
         self.update()
 
     def feed(self, features: FaceFeatures) -> None:
+        if self.state == "pursuit" and self.session is not None:
+            if features.face_found and not features.eyes_closed():
+                vec = features.vector(self.session.eye)
+                if vec is not None:
+                    self._pursuit_samples.append((features.timestamp - self._state_t, vec))
+            return
         if self.state != "collect" or self.session is None:
             return
         if not features.face_found:
@@ -138,6 +153,13 @@ class CalibrationOverlay(QWidget):
             self._set_state("settle")
         elif self.state == "settle" and elapsed >= SETTLE_S:
             self._set_state("collect")
+        elif self.state == "pursuit_intro" and elapsed >= PURSUIT_INTRO_S:
+            self._set_state("pursuit")
+        elif self.state == "pursuit" and elapsed >= PURSUIT_S:
+            pairs, self.pursuit_lag = align_pursuit(self._pursuit_samples, PURSUIT_S)
+            for vec, target in pairs:
+                self.session.add_extra(vec, target, PURSUIT_WEIGHT)
+            self._finish()
         elif self.state == "collect":
             have = len(self._recenter_samples) if self.mode == "recenter" else len(
                 self.session.samples.get(self.index, []))
@@ -158,6 +180,12 @@ class CalibrationOverlay(QWidget):
         if self.index < len(self.targets):
             self._set_state("settle")
             return
+        if self.mode == "full" and self.pursuit_enabled:
+            self._set_state("pursuit_intro")  # then follow a moving dot for many more samples
+            return
+        self._finish()
+
+    def _finish(self) -> None:
         if self.mode == "head":
             self.model = fit_head_model(self.targets, self.session.samples)
         else:
@@ -200,6 +228,18 @@ class CalibrationOverlay(QWidget):
         super().paintEvent(event)
         if self.state == "done" and self.model is not None:
             self._paint_results()
+            return
+        if self.state == "pursuit":
+            tx, ty = pursuit_path(time.monotonic() - self._state_t, PURSUIT_S)
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            centre = QPointF(tx * self.width(), ty * self.height())
+            painter.setPen(QPen(self.text_color, 3))
+            painter.setBrush(self.dot_color)
+            painter.drawEllipse(centre, 14, 14)
+            painter.setBrush(self.text_color)
+            painter.drawEllipse(centre, 3, 3)
+            painter.end()
             return
         if self.state not in ("settle", "collect") or not self.targets:
             return

@@ -286,6 +286,11 @@ class Database:
                 self.conn.execute("ROLLBACK")
                 raise
 
+    def update_active_calibration(self, error_px: float, model: dict) -> None:
+        """Replace the active profile's model in place (online refinement)."""
+        self._execute("UPDATE calibration_profiles SET model_json = ?, error_px = ? WHERE active = 1",
+                      (json.dumps(model), error_px))
+
     def active_calibration(self) -> dict[str, Any] | None:
         row = self._execute(
             "SELECT id, name, created_at, version, n_points, screen_w, screen_h, error_px, model_json "
