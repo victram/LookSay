@@ -36,7 +36,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } elseif ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "0.1.0" }
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } elseif ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "0.2.0" }
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
           & $iscc "/DAppVersion=$version" packaging\installer.iss
