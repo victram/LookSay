@@ -1,0 +1,76 @@
+name: Build downloads
+
+# Builds the Windows installer and the macOS app on GitHub's machines.
+# Runs on every "v*" tag (and publishes a Release) or manually from the Actions tab.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.in pyinstaller pytest
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+      - name: Build executable
+        run: pyinstaller packaging/looksay.spec --noconfirm
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.1.0" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$version" packaging\installer.iss
+          Compress-Archive -Path dist\LookSay -DestinationPath dist\LookSay-windows-portable.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LookSay-windows
+          path: |
+            dist/LookSay-*-setup.exe
+            dist/LookSay-windows-portable.zip
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/LookSay-*-setup.exe
+            dist/LookSay-windows-portable.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.in pyinstaller pillow
+      - name: Build app
+        run: |
+          pyinstaller packaging/looksay.spec --noconfirm
+          ditto -c -k --keepParent dist/LookSay.app dist/LookSay-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LookSay-macos
+          path: dist/LookSay-macos.zip
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LookSay-macos.zip

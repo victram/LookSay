@@ -1,6 +1,8 @@
 ; Inno Setup script for a Windows installer (run after PyInstaller).
-;   iscc packaging\installer.iss
-#define AppVersion "0.1.0"
+;   iscc packaging\installer.iss   (optionally /DAppVersion=1.2.3)
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
 
 [Setup]
 AppName=LookSay

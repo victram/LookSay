@@ -29,6 +29,14 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True, name="LookSay", console=False,
-    icon=str(root / "assets" / "logo.ico") if sys.platform == "win32" else None,
+    icon=str(root / "assets" / ("logo.ico" if sys.platform == "win32" else "logo.png")),
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="LookSay")
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll, name="LookSay.app", icon=str(root / "assets" / "logo.png"), bundle_identifier="org.looksay.app",
+        info_plist={
+            "NSCameraUsageDescription": "LookSay uses the camera to follow your eyes. Images never leave this computer.",
+            "NSHighResolutionCapable": True,
+        },
+    )
