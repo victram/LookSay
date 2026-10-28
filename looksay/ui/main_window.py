@@ -27,6 +27,7 @@ from looksay.tracking.features import FaceFeatures
 from looksay.tracking.gaze import GazeEstimator, GazeSample
 from looksay.ui import theme
 from looksay.ui.calibration_view import CalibrationOverlay
+from looksay.ui.debug_view import BAD, DIM, FG, OK, WARN, DebugOverlay
 from looksay.ui.feedback import ClickSound
 from looksay.ui.keyboard import KeyboardPanel
 from looksay.ui.pages import ConfirmOverlay, DiagnosticsPage, PhrasesPage, SettingsPage
@@ -92,6 +93,8 @@ class MainWindow(QWidget):
         self.diag_timer.start()
 
         QShortcut(QKeySequence("F11"), self, activated=self._toggle_fullscreen)
+        QShortcut(QKeySequence(Qt.Key.Key_K), self, activated=self.toggle_debug,
+                  context=Qt.ShortcutContext.ApplicationShortcut)
         QShortcut(QKeySequence("Ctrl+Q"), self, activated=self.close)
 
         if db.recovered_from_corruption:
@@ -154,6 +157,7 @@ class MainWindow(QWidget):
         self.calibration.model_ready.connect(self.estimator.set_model)
         self.calibration.finished.connect(self._calibration_finished)
         self.calibration.recentered.connect(self._recentered)
+        self.debug_overlay = DebugOverlay(self)
         self.gaze_cursor = GazeCursor(self)
         self.gaze_cursor.raise_()
 
@@ -161,6 +165,91 @@ class MainWindow(QWidget):
         super().resizeEvent(event)
         for overlay in (self.confirm, self.calibration, self.gaze_cursor):
             overlay.setGeometry(self.rect())
+        self._place_debug_overlay()
+
+    # ================================================================ debug
+    def _place_debug_overlay(self) -> None:
+        # Over the message canvas, so the keyboard stays usable while debugging.
+        self.debug_overlay.setGeometry(self.canvas.geometry())
+
+    def _update_debug_info(self) -> None:
+        f, g, est = self.last_features, self.gaze_sample, self.estimator
+        stats = self.worker.stats if self.worker else None
+        lines: list[tuple[str, QColor]] = []
+        eye_lines: dict[str, list[str]] = {"right": [], "left": []}
+        message = ""
+        if self.worker is None:
+            message = self.tracker_error or "Camera not running (input = mouse, or no camera)"
+        elif f is None:
+            message = "Waiting for camera frames…"
+        elif not f.face_found:
+            message = "No face detected"
+        if f is not None and f.face_found and f.right and f.left:
+            conf_color = OK if f.confidence >= est.confidence_threshold else (WARN if f.confidence > 0.2 else BAD)
+            lines += [
+                (f"FACE    conf {f.confidence * 100:3.0f}% (min {est.confidence_threshold * 100:.0f}%)"
+                 f"  size {f.face_size:.2f}", conf_color),
+                (f"POSE    yaw {f.yaw:+5.1f}°  pitch {f.pitch:+5.1f}°  roll {f.roll:+5.1f}°"
+                 f"   {'3D' if f.pose_3d else 'approx'}", FG),
+                (f"HEAD    x {f.tx:+5.1f} y {f.ty:+5.1f} cm  distance {abs(f.tz):4.1f} cm" if f.pose_3d
+                 else f"HEAD    x {f.tx:+.2f}  y {f.ty:+.2f}", FG),
+                (f"IRIS    h R {f.right.h:+.3f} L {f.left.h:+.3f}   v R {f.right.v:+.3f} L {f.left.v:+.3f}", FG),
+                (f"LIDS    open R {f.right.openness:.2f} L {f.left.openness:.2f}"
+                 f"   blink R {f.blendshapes.get('eyeBlinkRight', 0):.2f} L {f.blendshapes.get('eyeBlinkLeft', 0):.2f}"
+                 f"  {'CLOSED' if f.eyes_closed() else ''}", WARN if f.eyes_closed() else FG),
+                (f"LOOK    h {(f.right.look_h + f.left.look_h) / 2:+.2f}  v {(f.right.look_v + f.left.look_v) / 2:+.2f}"
+                 "   (blendshapes)" if f.blendshapes else "LOOK    n/a", FG),
+            ]
+            for name, e in (("right", f.right), ("left", f.left)):
+                side = "Right" if name == "right" else "Left"
+                bs = f.blendshapes
+                shift = self.debug_overlay.frame.shifts.get(name) if self.debug_overlay.frame else None
+                eye_lines[name] = [
+                    f"iris r {e.iris_radius:.1f}px  eye {e.width:.0f}px",
+                    f"in {bs.get('eyeLookIn' + side, 0):.2f} out {bs.get('eyeLookOut' + side, 0):.2f} "
+                    f"up {bs.get('eyeLookUp' + side, 0):.2f} dn {bs.get('eyeLookDown' + side, 0):.2f}",
+                ] + ([f"refine {np.hypot(*shift):.1f}px"] if shift else [])
+        if est.model is not None and g is not None:
+            raw = est.last_raw
+            state_color = OK if g.state == "ok" else WARN
+            lines += [
+                (f"GAZE    {g.x * self.width():5.0f}, {g.y * self.height():4.0f} px   state {g.state}"
+                 + (f"   raw {raw[0]:.3f}, {raw[1]:.3f}" if raw is not None else ""), state_color),
+                (f"FILTER  1€ {self.settings['smoothing']}  sens {est.sensitivity:.1f}"
+                 f"  drift {est.offset[0]:+.3f},{est.offset[1]:+.3f}"
+                 f"  fixation {'LOCKED' if est.fixation_locked else 'moving'}", FG),
+            ]
+            m = est.model
+            err = m.error_px(self.width(), self.height())
+            pct = 100 * err / float(np.hypot(self.width(), self.height()))
+            lines.append((f"CALIB   {len(m.point_results)} pts  error {err:.0f} px ({pct:.1f}%)"
+                          f"  ridge {m.ridge:g} {'quad' if m.quadratic else 'linear'}",
+                          OK if pct < 4 else (WARN if pct < 8 else BAD)))
+        else:
+            lines.append(("CALIB   not calibrated (Settings > Calibrate)", WARN))
+        target = self._dwell_button.text() if self._dwell_button is not None else "—"
+        lines.append((f"DWELL   «{target}» {self.dwell.progress * 100:3.0f}%  of {self.dwell.dwell_s * 1000:.0f} ms"
+                      f"  input {self._last_source}", FG))
+        if stats is not None:
+            lines.append((f"CAMERA  {'OK' if stats.camera_ok else stats.camera_error or '…'}"
+                          f"  {self.settings['camera_resolution']} {stats.capture_fps.rate:4.1f} fps"
+                          f"  track {stats.process_fps.rate:4.1f} fps  {stats.avg_inference_ms:4.1f} ms",
+                          FG if stats.camera_ok else BAD))
+            lines.append((f"CPU     dropped {stats.frames_dropped}/{stats.frames_captured}"
+                          f" ({stats.drop_ratio * 100:.1f}%)  UI {self.ui_fps.rate:4.1f} fps"
+                          f"  iris refine {'on' if self.settings['iris_refinement'] else 'off'}", DIM))
+        self.debug_overlay.set_info(lines, eye_lines, message)
+
+    def toggle_debug(self) -> None:
+        """Physical K key: show/hide the tracking debug overlay."""
+        visible = not self.debug_overlay.isVisible()
+        self._place_debug_overlay()
+        self.debug_overlay.setVisible(visible)
+        if visible:
+            self.debug_overlay.raise_()
+            self.gaze_cursor.raise_()
+            self._update_debug_info()
+        self._configure_worker()
 
     def _toggle_fullscreen(self) -> None:
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
@@ -177,6 +266,7 @@ class MainWindow(QWidget):
     def _apply_all_settings(self) -> None:
         for key in ("language", "theme", "text_size", "dwell_ms", "cooldown_ms", "keyboard_mode", "keyboard_layout",
                     "sensitivity", "smoothing", "confidence_threshold", "tracking_eye", "gaze_cursor_size",
+                    "fixation_stabilizer",
                     "speech_rate", "speech_volume", "speech_voice", "learn_words", "auto_capitalize",
                     "sound_feedback"):
             self._on_setting(key, self.settings[key], initial=True)
@@ -210,6 +300,8 @@ class MainWindow(QWidget):
             self.estimator.sensitivity = value
         elif key == "smoothing":
             self.estimator.set_smoothing(value)
+        elif key == "fixation_stabilizer":
+            self.estimator.stabilize = value
         elif key == "confidence_threshold":
             self.estimator.confidence_threshold = value
         elif key == "tracking_eye":
@@ -232,7 +324,7 @@ class MainWindow(QWidget):
         elif key in CAMERA_KEYS or key == "input_source":
             if not initial:
                 self._restart_tracking()
-        elif key in ("camera_preview", "show_landmarks", "inference_every"):
+        elif key in ("camera_preview", "show_landmarks", "inference_every", "iris_refinement"):
             self._configure_worker()
         if not initial:
             self.settings_page.refresh()
@@ -263,6 +355,7 @@ class MainWindow(QWidget):
                                      self.settings["inference_every"])
         self.worker.features_ready.connect(self._on_features)
         self.worker.preview_ready.connect(self._on_preview)
+        self.worker.debug_ready.connect(self.debug_overlay.set_frame)
         self.worker.unavailable.connect(self._tracker_unavailable)
         self._configure_worker()
         self.tracker_error = ""
@@ -275,6 +368,8 @@ class MainWindow(QWidget):
             return
         self.worker.inference_every = self.settings["inference_every"]
         self.worker.landmarks_overlay = self.settings["show_landmarks"]
+        self.worker.iris_refinement = self.settings["iris_refinement"]
+        self.worker.debug_enabled = self.debug_overlay.isVisible()
         self.worker.preview_enabled = self.settings["camera_preview"] or self.pages.currentWidget() is self.diagnostics_page
         if not self.worker.preview_enabled:
             self.diagnostics_page.set_preview(None)
@@ -326,7 +421,7 @@ class MainWindow(QWidget):
     def _calibration_finished(self, model: GazeModel | None) -> None:
         if model is not None:
             screen = (self.width(), self.height())
-            error_px = model.fit_error * float(np.hypot(*screen)) / np.sqrt(2)
+            error_px = model.error_px(*screen)
             self.db.save_calibration(datetime.now().strftime("%Y-%m-%d %H:%M"), model.version,
                                      len(self.calibration.targets), screen, error_px, model.to_dict())
             self.estimator.set_model(model)
@@ -412,6 +507,10 @@ class MainWindow(QWidget):
             self._message = ""
             self.message_label.setText("")
         self._update_status(source)
+        if self.debug_overlay.isVisible():
+            self._debug_tick = (getattr(self, "_debug_tick", 0) + 1) % 3
+            if self._debug_tick == 0:  # ~10 Hz is plenty for text
+                self._update_debug_info()
 
     def _activate(self, button: GazeButton, from_gaze: bool) -> None:
         if from_gaze and self.settings["auto_drift"]:

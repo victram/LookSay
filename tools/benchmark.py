@@ -60,10 +60,11 @@ def main() -> None:
     session = CalibrationSession(calibration_targets(9))
     for i, (tx, ty) in enumerate(session.targets):
         for _ in range(30):
-            session.add_sample(i, np.array([0.4 + 0.2 * tx, -0.1 + 0.1 * ty, 0, 0]) + rng.normal(0, 0.003, 4))
-    rows.append(("Fit 9-point calibration (270 samples)", *timeit(session.fit, 50)))
+            base = np.array([0.2 * tx, 0.1 * ty, 0.2 * tx, 0.1 * ty, 0.3, 0.1 * tx, 0.1 * ty, 0, 0, 0, 0, 0, -45])
+            session.add_sample(i, base + rng.normal(0, 0.003, 13))
+    rows.append(("Fit 9-point calibration (270 samples, LOPO CV)", *timeit(session.fit, 20)))
     model = session.fit()
-    rows.append(("Gaze prediction", *timeit(lambda: model.predict(np.array([0.5, -0.05, 0, 0])), 2000)))
+    rows.append(("Gaze prediction", *timeit(lambda: model.predict(base), 2000)))
 
     try:
         import cv2
@@ -73,7 +74,7 @@ def main() -> None:
 
         image = cv2.imread(str(Path(matplotlib.get_data_path()) / "sample_data" / "grace_hopper.jpg"))
         detector = LandmarkDetector()
-        for size in ((320, 240), (640, 480)):
+        for size in ((640, 480), (1280, 960)):
             frame = cv2.cvtColor(cv2.resize(image, size), cv2.COLOR_BGR2RGB)
             ts = [0.0]
 
@@ -84,8 +85,16 @@ def main() -> None:
                 detect()
             med, p95 = timeit(detect, 100)
             rows.append((f"Face+iris landmarks {size[0]}x{size[1]} (MediaPipe)", med, p95))
-        pts, _ = detector.detect(frame, 1000.0)
-        rows.append(("Gaze features from landmarks", *timeit(lambda: compute_features(pts, 640, 480, 0.0), 2000)))
+        d = detector.detect(frame, 1000.0)
+        rows.append(("Gaze features (landmarks + pose + blendshapes)", *timeit(
+            lambda: compute_features(d.points, 640, 480, 0.0, 0.0, d.blendshapes, d.matrix), 2000)))
+        from looksay.tracking.iris_refine import refine_iris
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        rows.append(("Iris refinement (both eyes)", *timeit(lambda: refine_iris(gray, d.points), 500)))
+        from looksay.tracking.worker import render_debug
+        f = compute_features(d.points, frame.shape[1], frame.shape[0], 0.0, 0.0, d.blendshapes, d.matrix)
+        rows.append(("Debug views render (K overlay)", *timeit(
+            lambda: render_debug(frame, d.points, f, d.matrix, d.points), 100)))
         detector.close()
     except Exception as exc:  # pragma: no cover
         print(f"(landmark benchmark skipped: {exc})")

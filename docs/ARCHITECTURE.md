@@ -50,16 +50,45 @@ flowchart LR
 
 ## Design decisions
 
-- **Gaze features, not pixels.** Per eye, the iris position is measured
-  relative to the eye corners and eyelids and normalised by eye width, so it
-  does not depend on distance to the camera. Head yaw and pitch are extra inputs. A
-  2nd-order polynomial ridge regression (linear for 5 points) maps the features to
-  0..1 window coordinates. It is fast (≈1.5 ms to fit), easy to inspect, and
-  resizing the window does not invalidate it.
+- **Gaze features, not pixels.** Each frame gives a 13-value feature vector:
+  - per eye, the iris centre (mean of the 5 iris landmarks) relative to the
+    centroid of the 16-point eye contour, in an eye-aligned frame (head roll
+    removed) and normalised by eye width;
+  - the eyelid aperture, because the upper lid follows vertical gaze, which
+    is where webcam iris landmarks are weakest;
+  - MediaPipe's eyeLook blendshapes, a second, learned estimate of eye
+    rotation;
+  - the 3D head pose (yaw, pitch, roll and translation in cm) from
+    MediaPipe's facial transformation matrix.
+  Blendshapes and pose cost nothing measurable, and full-resolution frames
+  (up to 1280 px wide) cost the same as 640 px because iris landmarks are
+  computed on eye crops.
+- **Calibration model.** Ridge regression on standardised features, plus
+  quadratic terms of the combined eye signals when there are 8 or more
+  points. The ridge strength is chosen by leave-one-point-out
+  cross-validation, and that cross-validated error is the accuracy shown to
+  the user. It is more honest than the training error. The result screen
+  draws each target and where the model placed the gaze. 5, 9 and 13 points
+  are available.
+- **Fixation stabiliser.** After the One Euro filter, a dispersion-based
+  (I-DT style) window holds the cursor at the mean while the gaze stays
+  within 3% of the window for 0.3 s. A saccade resets it immediately. This
+  makes dwell selection much steadier without adding lag to large moves.
+- **Optional iris refinement.** A darkness-weighted centroid inside the
+  predicted iris circle, masked by the eye contour, is blended 50/50 with
+  the landmark centre. The shift is capped at 0.6 iris radii. It is off by
+  default because glasses reflections can mislead it; compare both in the
+  K view.
 - **Confidence is a heuristic.** FaceLandmarker gives no per-frame score, so
-  confidence combines face size, head rotation, eye openness and how plausible
-  the iris position is. Below the user threshold, selection pauses and the cursor
-  turns grey and dashed.
+  confidence combines face size, head rotation, eye openness, whether the
+  iris is plausibly inside the eye, and whether both eyes agree. Below the
+  user threshold, selection pauses and the cursor turns grey and dashed.
+- **Debug view (K).** The worker renders a face crop (mesh, eye contours,
+  iris circles, eye-direction arrows, head-pose axes) and two roll-corrected,
+  magnified eye views (contour, corners, eye centre, iris circle,
+  landmark-only versus refined centre, scale bar), at 20 Hz and only while
+  the view is open. The UI adds HUD lines with every value the pipeline
+  uses.
 - **Drift.** Users can recentre explicitly (one dot). Auto drift correction
   can also nudge a bounded offset (max 8% of the window) towards the centre
   of each button selected by gaze.
@@ -99,18 +128,19 @@ From `python tools/benchmark.py` on a 4-vCPU Intel Xeon @ 2.8 GHz cloud VM
 
 | Operation | median ms | p95 ms |
 |---|---:|---:|
-| Face + iris landmarks, 640×480 (MediaPipe, CPU) | 13.4 | 16.8 |
-| Face + iris landmarks, 320×240 | 13.3 | 17.7 |
-| Gaze features from landmarks | 0.06 | 0.13 |
-| Gaze prediction (calibrated model) | 0.014 | 0.021 |
-| Fit 9-point calibration (270 samples) | 1.5 | 2.6 |
+| Face + iris landmarks + blendshapes + pose, 1280×960 (MediaPipe, CPU) | 11.3 | 15.8 |
+| Same at 640×480 | 10.1 | 13.3 |
+| Gaze features (landmarks + pose + blendshapes) | 0.20 | 0.29 |
+| Iris refinement, both eyes (optional) | 0.69 | 0.93 |
+| Debug views render (only while K view is open) | 2.5 | 3.2 |
+| Gaze prediction (calibrated model) | 0.021 | 0.032 |
+| Fit 9-point calibration with cross-validation | 8.2 | 10.2 |
 | Dwell state update | 0.001 | 0.001 |
-| Prefix suggestions (2 letters) | 0.17 | 0.32 |
-| Prefix suggestions (single letter, worst case) | ≈4–10 | |
-| Next-word suggestions | 0.08 | 0.16 |
-| Load a language (20k words) | 70 | |
+| Prefix suggestions (2 letters) | 0.17 | 0.22 |
+| Next-word suggestions | 0.07 | 0.11 |
+| Load a language (20k words) | 64 | |
 
-At ~13 ms per frame, analysis has headroom for 30 FPS on this CPU. The UI
+At ~11 ms per frame, analysis has headroom for 30 FPS on this CPU. The UI
 loop ticks at 30 Hz (31.7 FPS measured in Diagnostics). On this VM the
 benchmark process peaks at about 215 MB RSS. The PyInstaller folder build is
 619 MB on Linux (≈167 MB xz-compressed). Most of that is `libmediapipe`

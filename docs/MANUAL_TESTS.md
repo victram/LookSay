@@ -27,3 +27,6 @@ screen, and the results (time, errors, comments).
 | 18 | Camera denied | Deny camera permission (Windows privacy settings) | The app still starts; the mouse works; the status explains the problem |
 | 19 | Export / import / reset | Export → Delete all data (confirm) → Import | Settings and phrases come back; learned words and calibration are gone, as expected |
 | 20 | Fatigue | 20 minutes of continuous use | The user's comfort rating; any accidental selections |
+| 21 | Debug view | Press K; look left, right, up and down; turn the head; close the eyes | Iris circles sit on the irises; h follows horizontal gaze and v/open follow vertical gaze in both eyes; pose and distance change with the head; CLOSED appears; K again closes it |
+| 22 | Iris refinement | Settings ▸ Eye tracking ▸ Iris refinement on; compare the two centres in the K view (with and without glasses) | The refined centre stays on the pupil; keep it on only if the calibration error improves |
+| 23 | Calibration accuracy | Calibrate with 9 and with 13 points | Note the validated error (px and %) and the point map; < 4% is good |

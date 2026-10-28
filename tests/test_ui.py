@@ -21,8 +21,14 @@ from tests.conftest import DICTS  # noqa: E402
 
 
 class IdentityModel:
-    version = 1
+    version = 2
     fit_error = 0.0
+    ridge = 0.01
+    quadratic = False
+    point_results: list = []
+
+    def error_px(self, width, height):
+        return 0.0
 
     def predict(self, x):
         x = np.atleast_2d(x)
@@ -248,3 +254,22 @@ def test_first_use_starts_calibration_when_face_appears(window, qapp):
     w.calibration._cancel()
     w._on_features(features(0.5, 0.5))
     assert not w.calibration.isVisible()  # only once per session
+
+
+def test_k_key_toggles_debug_overlay_with_live_info(window, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    w = window
+    w._on_features(features(0.5, 0.5))
+    QTest.keyClick(w, Qt.Key.Key_K)
+    assert w.debug_overlay.isVisible()
+    assert w.debug_overlay.geometry() == w.canvas.geometry()  # keyboard stays usable
+    w._update_debug_info()
+    text = "\n".join(t for t, _ in w.debug_overlay.lines)
+    assert "FACE" in text and "IRIS" in text and "GAZE" in text and "DWELL" in text
+    # The overlay must not block selection: keys below still work by gaze.
+    look_at(w, qapp, key(w, "a"))
+    assert w.buffer.text == "A"
+    QTest.keyClick(w, Qt.Key.Key_K)
+    assert not w.debug_overlay.isVisible()

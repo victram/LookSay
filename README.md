@@ -41,11 +41,17 @@ python -m looksay              # add --mouse to try it without a camera
 A caregiver can also use the mouse: hovering over a key selects it, and
 clicking works too. Press F11 for full screen.
 
+Press **K** on the computer's keyboard to open the tracking debug view: the
+camera image of the face, a magnified view of each eye with the detected
+iris, and live numbers (confidence, head pose and distance, iris offsets,
+calibration error, FPS). Use it to check the lighting and camera position
+before calibrating.
+
 ## Development
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                          # 79 tests, including headless UI tests driven by simulated gaze
+pytest -q                          # 85 tests, including headless UI tests driven by simulated gaze
 python tools/benchmark.py          # measured timings on your machine
 pyinstaller packaging/looksay.spec # self-contained build (see docs/BUILDING.md)
 ```

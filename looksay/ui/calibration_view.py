@@ -17,7 +17,7 @@ from looksay.ui.widgets import GazeButton
 
 INTRO_S = 2.5
 SETTLE_S = 0.8
-COLLECT_S = 1.2
+COLLECT_S = 1.5
 MAX_COLLECT_S = 3.5
 
 
@@ -150,9 +150,12 @@ class CalibrationOverlay(QWidget):
             self._set_state("failed")
             self.message.setText(tr("calib_failed", self.lang))
         else:
-            error_px = self.model.fit_error * float(np.hypot(self.width(), self.height())) / np.sqrt(2)
+            error_px = self.model.error_px(self.width(), self.height())
+            pct = 100 * error_px / float(np.hypot(self.width(), self.height()))
+            quality = "calib_quality_good" if pct < 4 else ("calib_quality_fair" if pct < 8 else "calib_quality_poor")
             self._set_state("done")
-            self.message.setText(tr("calib_done", self.lang, error=f"{error_px:.0f}"))
+            self.message.setText(tr("calib_done", self.lang, error=f"{error_px:.0f}", pct=f"{pct:.1f}")
+                                 + "\n" + tr(quality, self.lang))
             self.model_ready.emit(self.model)
 
     def _accept(self) -> None:
@@ -178,6 +181,9 @@ class CalibrationOverlay(QWidget):
     # ------------------------------------------------------------ drawing
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
+        if self.state == "done" and self.model is not None:
+            self._paint_results()
+            return
         if self.state not in ("settle", "collect") or not self.targets:
             return
         tx, ty = self.targets[self.index]
@@ -197,4 +203,22 @@ class CalibrationOverlay(QWidget):
         painter.drawEllipse(center, radius, radius)
         painter.setBrush(self.text_color)
         painter.drawEllipse(center, 3, 3)
+        painter.end()
+
+    def _paint_results(self) -> None:
+        """Each target (ring) and where the cross-validated model placed the gaze (dot)."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        for tx, ty, px, py in self.model.point_results:
+            target = QPointF(tx * w, ty * h)
+            pred = QPointF(px * w, py * h)
+            painter.setPen(QPen(self.text_color, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(target, 14, 14)
+            painter.setPen(QPen(self.dot_color, 2, Qt.PenStyle.DashLine))
+            painter.drawLine(target, pred)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self.dot_color)
+            painter.drawEllipse(pred, 6, 6)
         painter.end()
