@@ -27,8 +27,11 @@ class OneEuroFilter:
     def from_strength(cls, strength: int) -> "OneEuroFilter":
         """Map the 0 (raw) .. 10 (very smooth) user setting to filter parameters."""
         strength = max(0, min(10, strength))
-        min_cutoff = 4.0 * (0.05 / 4.0) ** (strength / 10.0)  # 4 Hz .. 0.05 Hz
-        return cls(min_cutoff=min_cutoff, beta=0.004)
+        min_cutoff = 4.0 * (0.05 / 4.0) ** (strength / 10.0)  # 4 Hz .. 0.05 Hz when still
+        # beta raises the cutoff with speed (units: screen widths per second), so
+        # the cursor is smooth when the gaze is still but does not lag when it
+        # moves: at 1 screen/s the cutoff gains 1.5 Hz (time constant ~0.1 s).
+        return cls(min_cutoff=min_cutoff, beta=1.5)
 
     def reset(self) -> None:
         self._x: np.ndarray | None = None

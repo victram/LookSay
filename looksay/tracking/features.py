@@ -90,6 +90,7 @@ class FaceFeatures:
     nose_x: float = 0.0
     nose_y: float = 0.0
     blendshapes: dict[str, float] = field(default_factory=dict)
+    patches: np.ndarray | None = field(default=None, repr=False)  # (2, H, W) normalised eye images
     landmarks_2d: np.ndarray | None = field(default=None, repr=False)  # (N, 2) normalised, for overlays
     frame_size: tuple[int, int] = (0, 0)
 
@@ -104,8 +105,17 @@ class FaceFeatures:
             r = l
         look_h = (r.look_h + l.look_h) / 2.0
         look_v = (r.look_v + l.look_v) / 2.0
-        return np.array([r.h, r.v, l.h, l.v, (r.openness + l.openness) / 2.0, look_h, look_v,
-                         self.yaw, self.pitch, self.roll, self.tx, self.ty, self.tz], dtype=np.float64)
+        geo = np.array([r.h, r.v, l.h, l.v, (r.openness + l.openness) / 2.0, look_h, look_v,
+                        self.yaw, self.pitch, self.roll, self.tx, self.ty, self.tz], dtype=np.float64)
+        if self.patches is None:
+            return geo
+        pr, pl = self.patches[0], self.patches[1]
+        if eye == "right":
+            pl = pr
+        elif eye == "left":
+            pr = pl
+        # Appearance features: the eye images themselves (reduced by PCA in the model).
+        return np.concatenate([geo, pr.ravel(), pl.ravel()]).astype(np.float64)
 
     def head_vector(self) -> np.ndarray | None:
         """Features for the nose/head pointer: nose offsets plus 3D yaw/pitch when available."""
@@ -128,7 +138,10 @@ def _eye(pts: np.ndarray, spec: dict) -> EyeFeatures:
     width = float(np.linalg.norm(axis)) or 1e-6
     unit = axis / width
     normal = np.array([-unit[1], unit[0]])  # +90°: points down the face for an upright head
-    center = pts[list(spec["contour"])].mean(axis=0)
+    # Reference = midpoint of the eye corners. The corners are fixed to the
+    # skull; the lid contour moves with vertical gaze, so its centroid would
+    # cancel part of the vertical signal.
+    center = (a + b) / 2.0
     iris_pts = pts[list(spec["iris"])]
     iris = iris_pts.mean(axis=0)
     radius = float(np.linalg.norm(iris_pts[1:] - iris, axis=1).mean())
@@ -154,7 +167,7 @@ def pose_from_matrix(matrix: np.ndarray) -> tuple[float, float, float, float, fl
 
 def compute_features(points: np.ndarray | None, frame_w: int, frame_h: int, timestamp: float,
                      inference_ms: float = 0.0, blendshapes: dict[str, float] | None = None,
-                     matrix: np.ndarray | None = None) -> FaceFeatures:
+                     matrix: np.ndarray | None = None, patches: np.ndarray | None = None) -> FaceFeatures:
     """points: (N, 2 or 3) landmarks in normalised image coordinates."""
     if points is None or len(points) < NUM_LANDMARKS_WITH_IRIS:
         return FaceFeatures(timestamp=timestamp, face_found=False, inference_ms=inference_ms,
@@ -191,7 +204,7 @@ def compute_features(points: np.ndarray | None, frame_w: int, frame_h: int, time
     nose_y = float((nose[1] - eyes_mid[1]) / face_w)
     features = FaceFeatures(
         timestamp=timestamp, face_found=True, right=right, left=left, yaw=yaw, pitch=pitch, roll=roll,
-        nose_x=nose_x, nose_y=nose_y,
+        nose_x=nose_x, nose_y=nose_y, patches=patches,
         tx=tx, ty=ty, tz=tz, face_size=face_w / frame_w, inference_ms=inference_ms, pose_3d=pose_3d,
         blendshapes=bs, landmarks_2d=np.asarray(points, dtype=np.float32)[:, :2], frame_size=(frame_w, frame_h),
     )

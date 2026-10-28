@@ -12,6 +12,7 @@ from PySide6.QtGui import QImage
 
 from looksay.diagnostics.stats import TrackingStats
 from looksay.tracking.camera import CaptureThread, LatestFrameSlot
+from looksay.tracking.eye_patch import eye_patches
 from looksay.tracking.features import EYES, NOSE_TIP, FaceFeatures, compute_features
 from looksay.tracking.landmarks import LandmarkDetector, TrackerUnavailable
 
@@ -107,12 +108,15 @@ class TrackingWorker(QThread):
                 det = detector.detect(rgb, frame.timestamp)
                 self.stats.record_inference(det.inference_ms)
                 self.stats.process_fps.tick()
-                points, shifts = det.points, {}
-                if points is not None and self.iris_refinement:
-                    from looksay.tracking.iris_refine import refine_iris
-                    points, shifts = refine_iris(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), points)
+                points, shifts, patches = det.points, {}, None
+                if points is not None:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    if self.iris_refinement:
+                        from looksay.tracking.iris_refine import refine_iris
+                        points, shifts = refine_iris(gray, points)
+                    patches = eye_patches(gray, points)
                 features = compute_features(points, w, h, frame.timestamp, det.inference_ms,
-                                            det.blendshapes, det.matrix)
+                                            det.blendshapes, det.matrix, patches)
                 self.features_ready.emit(features)
                 if self.preview_enabled and frame.timestamp - last_preview >= PREVIEW_INTERVAL_S:
                     last_preview = frame.timestamp

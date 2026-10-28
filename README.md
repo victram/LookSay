@@ -61,7 +61,7 @@ before calibrating.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                          # 95 tests, including headless UI tests driven by simulated gaze
+pytest -q                          # 98 tests, including headless UI tests driven by simulated gaze
 python tools/benchmark.py          # measured timings on your machine
 pyinstaller packaging/looksay.spec # self-contained build (see docs/BUILDING.md)
 ```

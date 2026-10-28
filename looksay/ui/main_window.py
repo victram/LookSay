@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -76,6 +77,9 @@ class MainWindow(QWidget):
         self._recent_vectors: list[tuple[float, np.ndarray]] = []
         self._pending_samples: list[tuple[float, np.ndarray, tuple[float, float]]] = []
         self._confirmed_samples = 0
+        self._refit_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="looksay-refit")
+        self._refit_future: Future | None = None
+        self._refits = 0
         self.click_sound: ClickSound | None = None
         self.ui_fps = RateCounter()
         self.worker = None
@@ -251,7 +255,10 @@ class MainWindow(QWidget):
             err = m.error_px(self.width(), self.height())
             pct = 100 * err / float(np.hypot(self.width(), self.height()))
             lines.append((f"CALIB   {len(m.point_results)} pts  error {err:.0f} px ({pct:.1f}%)"
-                          f"  {'eyes' if m is est.model else 'nose'}",
+                          f"  {'eyes' if m is est.model else 'nose'}"
+                          + (f" + eye images ({len(m.pca_comp)} comp.)" if getattr(m, "pca_comp", None) is not None
+                             else "")
+                          + (f"  learned {self._confirmed_samples}" if m is est.model else ""),
                           OK if pct < 4 else (WARN if pct < 8 else BAD)))
         else:
             lines.append(("CALIB   not calibrated (Settings > Calibrate)", WARN))
@@ -516,16 +523,32 @@ class MainWindow(QWidget):
             self.calib_session.add_extra(vec, target, 1.0)
             self._confirmed_samples += 1
             refit = refit or self._confirmed_samples % REFIT_EVERY == 0
-        if not refit:
+        if refit and self._refit_future is None:
+            # Fitting with eye-image features takes ~0.5 s: do it off the UI thread.
+            snapshot = CalibrationSession(self.calib_session.targets, self.calib_session.eye,
+                                          dict(self.calib_session.samples), list(self.calib_session.extra))
+            self._refit_future = self._refit_pool.submit(snapshot.fit)
+        self._adopt_refit()
+
+    def _adopt_refit(self) -> None:
+        if self._refit_future is None or not self._refit_future.done():
             return
-        model = self.calib_session.fit()
+        future, self._refit_future = self._refit_future, None
+        try:
+            model = future.result()
+        except Exception:
+            log.exception("Online refit failed")
+            return
         current = self.estimator.model
         # Only adopt a refit that does not validate worse than what we have.
         if model is not None and (current is None or model.fit_error <= current.fit_error * 1.1):
             offset = self.estimator.offset.copy()
             self.estimator.model = model
             self.estimator.offset = offset * 0.5  # the refit absorbs part of the drift
-            self.db.update_active_calibration(model.error_px(self.width(), self.height()), self._model_record(model))
+            self._refits += 1
+            if self._refits % 4 == 1:  # the session with eye images is a few MB: save now and then
+                self.db.update_active_calibration(model.error_px(self.width(), self.height()),
+                                                  self._model_record(model))
             log.info("Gaze model refined from %d selections", self._confirmed_samples)
 
     def _recentered(self, target: tuple, observed: np.ndarray) -> None:
@@ -891,6 +914,10 @@ class MainWindow(QWidget):
     # ============================================================== closing
     def closeEvent(self, event) -> None:
         self.timer.stop()
+        self._refit_pool.shutdown(wait=True)
+        if self._refits and self.estimator.model is not None:
+            self.db.update_active_calibration(self.estimator.model.error_px(self.width(), self.height()),
+                                              self._model_record(self.estimator.model))
         self._stop_tracking()
         self.speech.stop()
         self.db.prune_learning()

@@ -335,6 +335,8 @@ def test_selections_refine_the_model_unless_corrected(window, qapp):
         w._queue_learning_sample(btn)
     w._confirm_learning_sample(now + 10)
     assert len(session.extra) == 5
+    w._refit_future.result(timeout=10)  # the refit runs in the background
+    w._adopt_refit()
     assert w.estimator.model is not model_before  # refitted after 5 confirmed samples
 
 

@@ -361,3 +361,87 @@ def test_session_serialisation_roundtrip_with_extras():
     clone = CalibrationSession.from_dict(session.to_dict())
     assert len(clone.extra) == 1 and set(clone.samples) == set(session.samples)
     assert clone.fit().fit_error == pytest.approx(session.fit().fit_error, rel=1e-3)
+
+
+def _rendered_patch(tx, ty, rng):
+    """A tiny eye image whose dark iris position depends on where the user looks."""
+    from looksay.tracking.eye_patch import PATCH_H, PATCH_W
+
+    yy, xx = np.mgrid[0:PATCH_H, 0:PATCH_W]
+    cx, cy = PATCH_W / 2 + (tx - 0.5) * 8, PATCH_H / 2 + (ty - 0.5) * 4
+    img = 200 - 150 * np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / 6.0)
+    img = img - 60 * (yy < 2 + 3 * (1 - ty))  # upper lid lower when looking down
+    img = img + rng.normal(0, 6, img.shape)
+    return ((img - img.mean()) / img.std()).ravel()
+
+
+def test_eye_image_features_help_when_there_is_enough_data_and_never_hurt():
+    rng = np.random.default_rng(7)
+    targets = calibration_targets(13)
+    geo_only, with_patches = CalibrationSession(targets), CalibrationSession(targets)
+    for i, (tx, ty) in enumerate(targets):
+        for _ in range(25):
+            geo = _vector(tx, ty, rng, noise=0.03)  # very noisy landmarks
+            geo_only.add_sample(i, geo)
+            p = _rendered_patch(tx, ty, rng)
+            with_patches.add_sample(i, np.concatenate([geo, p, p]))
+    # 13 points only: CV chooses how much appearance to use, so it is never worse.
+    m_geo, m_13 = geo_only.fit(), with_patches.fit()
+    assert m_13.fit_error <= m_geo.fit_error + 1e-9
+    # With pursuit-like data (hundreds of distinct targets) the eye images win clearly.
+    for _ in range(500):
+        tx, ty = rng.uniform(0.05, 0.95, 2)
+        geo = _vector(tx, ty, rng, noise=0.03)
+        p = _rendered_patch(tx, ty, rng)
+        geo_only.add_extra(geo, (tx, ty), 0.5)
+        with_patches.add_extra(np.concatenate([geo, p, p]), (tx, ty), 0.5)
+    m_geo, m_app = geo_only.fit(), with_patches.fit()
+    assert m_app.uses_appearance and not m_geo.uses_appearance
+    assert m_app.fit_error < m_geo.fit_error * 0.7
+    # serialisation keeps the PCA basis; a frame without patches still predicts
+    clone = GazeModel.from_dict(m_app.to_dict())
+    x = np.concatenate([_vector(0.3, 0.7, rng, noise=0), _rendered_patch(0.3, 0.7, rng),
+                        _rendered_patch(0.3, 0.7, rng)])
+    assert np.allclose(clone.predict(x), m_app.predict(x))
+    assert clone.predict(x[:13]).shape == (1, 2)
+    # compact session storage round-trips
+    restored = CalibrationSession.from_dict(with_patches.to_dict())
+    assert restored.fit().fit_error == pytest.approx(m_app.fit_error, rel=0.1)
+
+
+def test_eye_patch_follows_the_iris():
+    cv2 = pytest.importorskip("cv2")
+    from looksay.tracking.eye_patch import PATCH_H, PATCH_W, eye_patch
+
+    def darkest_x(shift):
+        gray = np.full((200, 300), 190, np.uint8)
+        cv2.circle(gray, (150 + shift, 100), 9, 30, -1)
+        p = eye_patch(gray, np.array([120.0, 100.0]), np.array([180.0, 100.0]))
+        assert p.shape == (PATCH_H, PATCH_W)
+        return np.unravel_index(np.argmin(p), p.shape)[1]
+
+    assert darkest_x(-8) < darkest_x(0) < darkest_x(8)
+
+
+def test_real_face_eye_patches():
+    cv2 = pytest.importorskip("cv2")
+    mpl = pytest.importorskip("matplotlib")
+    from pathlib import Path
+
+    from looksay.tracking.eye_patch import eye_patches
+    from looksay.tracking.landmarks import LandmarkDetector, TrackerUnavailable
+
+    path = Path(mpl.get_data_path()) / "sample_data" / "grace_hopper.jpg"
+    if not path.exists():
+        pytest.skip("sample image not available")
+    try:
+        det = LandmarkDetector()
+    except TrackerUnavailable as exc:
+        pytest.skip(str(exc))
+    img = cv2.imread(str(path))
+    d = det.detect(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), 0.0)
+    det.close()
+    patches = eye_patches(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), d.points)
+    assert patches is not None and patches.shape == (2, 12, 24)
+    f = compute_features(d.points, img.shape[1], img.shape[0], 0.0, 0.0, d.blendshapes, d.matrix, patches)
+    assert f.vector().shape == (13 + 2 * 12 * 24,)

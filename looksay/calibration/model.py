@@ -7,6 +7,10 @@ calibration points. The ridge strength is chosen by leave-one-point-out
 cross-validation, and that cross-validated error (not the optimistic
 training error) is what we report as the calibration accuracy.
 
+When eye-image patches are present (columns after the 13 geometric
+features), they are reduced with PCA, fitted on the calibration data, and
+the leading components join the regression as appearance features.
+
 Outputs are in the 0..1 space of the calibrated window, so resizing the
 window does not invalidate the calibration.
 """
@@ -15,11 +19,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import base64
+
 import numpy as np
 
 from looksay.tracking.features import FEATURE_NAMES
 
-MODEL_VERSION = 2
+MODEL_VERSION = 3  # v3: corner-referenced iris offsets + appearance (eye image) features
 MIN_SAMPLES_PER_POINT = 5
 RIDGE_GRID = (0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 # Extra samples (smooth pursuit, confirmed selections) within this distance of
@@ -32,6 +38,17 @@ MAX_EXTRA_SAMPLES = 1500
 # feature that barely moved during calibration cannot dominate the model.
 STD_FLOOR = np.array([0.004, 0.004, 0.004, 0.004, 0.004, 0.02, 0.02, 1.0, 1.0, 1.0, 0.5, 0.5, 1.0])
 N_FEATURES = len(FEATURE_NAMES)
+N_PCA = 16  # appearance components kept from the eye patches
+PCA_STD_FLOOR = 0.05
+
+
+def _project(x: np.ndarray, pca_mean: np.ndarray | None, pca_comp: np.ndarray | None) -> np.ndarray:
+    """Geometric features + PCA-reduced eye patches (patch mean used if a frame has none)."""
+    geo = x[:, :N_FEATURES]
+    if pca_mean is None or pca_comp is None:
+        return geo
+    patches = x[:, N_FEATURES:] if x.shape[1] > N_FEATURES else np.tile(pca_mean, (len(x), 1))
+    return np.hstack([geo, (patches - pca_mean) @ pca_comp.T])
 
 
 def calibration_targets(n_points: int, margin: float = 0.08) -> list[tuple[float, float]]:
@@ -111,11 +128,17 @@ class GazeModel:
     ridge: float = 0.01
     # (target_x, target_y, predicted_x, predicted_y) per calibration point (cross-validated)
     point_results: list[tuple[float, float, float, float]] = field(default_factory=list)
+    pca_mean: np.ndarray | None = None
+    pca_comp: np.ndarray | None = None  # (k, patch_size)
     version: int = MODEL_VERSION
+
+    @property
+    def uses_appearance(self) -> bool:
+        return self.pca_comp is not None
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         x = np.atleast_2d(np.asarray(x, dtype=np.float64))
-        z = (x - self.mean) / self.std
+        z = (_project(x, self.pca_mean, self.pca_comp) - self.mean) / self.std
         return _design(z, self.quadratic) @ self.coef
 
     def error_px(self, width: float, height: float) -> float:
@@ -130,6 +153,8 @@ class GazeModel:
             "version": self.version, "mean": self.mean.tolist(), "std": self.std.tolist(),
             "coef": self.coef.tolist(), "quadratic": self.quadratic, "eye": self.eye,
             "fit_error": self.fit_error, "ridge": self.ridge, "point_results": self.point_results,
+            "pca_mean": None if self.pca_mean is None else self.pca_mean.tolist(),
+            "pca_comp": None if self.pca_comp is None else self.pca_comp.tolist(),
         }
 
     @classmethod
@@ -141,7 +166,24 @@ class GazeModel:
             quadratic=bool(data["quadratic"]), eye=data.get("eye", "both"),
             fit_error=float(data.get("fit_error", 0.0)), ridge=float(data.get("ridge", 0.01)),
             point_results=[tuple(p) for p in data.get("point_results", [])],
+            pca_mean=None if data.get("pca_mean") is None else np.array(data["pca_mean"]),
+            pca_comp=None if data.get("pca_comp") is None else np.array(data["pca_comp"]),
         )
+
+
+def _pack(rows: list[np.ndarray]) -> dict:
+    """Compact storage for feature rows (float16, base64): eye patches make rows long."""
+    if not rows:
+        return {"n": 0, "d": 0, "b": ""}
+    arr = np.array(rows, dtype=np.float16)
+    return {"n": arr.shape[0], "d": arr.shape[1], "b": base64.b64encode(arr.tobytes()).decode("ascii")}
+
+
+def _unpack(data: dict) -> list[np.ndarray]:
+    if not data.get("n"):
+        return []
+    arr = np.frombuffer(base64.b64decode(data["b"]), dtype=np.float16).reshape(data["n"], data["d"])
+    return [row.astype(np.float64) for row in arr]
 
 
 @dataclass
@@ -161,16 +203,20 @@ class CalibrationSession:
 
     def to_dict(self) -> dict:
         return {
-            "targets": self.targets, "eye": self.eye,
-            "samples": {str(k): np.round(np.array(v), 5).tolist() for k, v in self.samples.items()},
-            "extra": [[np.round(v, 5).tolist(), list(t), w] for v, t, w in self.extra],
+            "version": MODEL_VERSION, "targets": self.targets, "eye": self.eye,
+            "samples": {str(k): _pack(v) for k, v in self.samples.items()},
+            "extra": _pack([v for v, _, _ in self.extra]),
+            "extra_meta": [[t[0], t[1], w] for _, t, w in self.extra],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "CalibrationSession":
+        if data.get("version") != MODEL_VERSION:
+            raise ValueError("Calibration data from an older version")
         session = cls([tuple(t) for t in data["targets"]], eye=data.get("eye", "both"))
-        session.samples = {int(k): [np.array(r) for r in v] for k, v in data.get("samples", {}).items()}
-        session.extra = [(np.array(v), tuple(t), float(w)) for v, t, w in data.get("extra", [])]
+        session.samples = {int(k): _unpack(v) for k, v in data.get("samples", {}).items()}
+        vectors = _unpack(data.get("extra", {}))
+        session.extra = [(v, (m[0], m[1]), float(m[2])) for v, m in zip(vectors, data.get("extra_meta", []))]
         return session
 
     def add_sample(self, target_index: int, vector: np.ndarray) -> None:
@@ -205,28 +251,52 @@ class CalibrationSession:
             ys.append(np.array([t for _, t, _ in self.extra]))
             groups.append(np.full(len(self.extra), -1))
             weights.append(np.array([w for _, _, w in self.extra]))
+        width = max(r.shape[1] for r in xs)
+        if any(r.shape[1] != width for r in xs):  # a few frames without eye patches
+            xs = [r if r.shape[1] == width else np.hstack([r, np.full((len(r), width - r.shape[1]), np.nan)])
+                  for r in xs]
         x, y = np.vstack(xs), np.vstack(ys)
         groups, w = np.concatenate(groups), np.concatenate(weights)
-        mean = x.mean(axis=0)
-        std = np.maximum(x.std(axis=0), STD_FLOOR[: x.shape[1]])
-        z = (x - mean) / std
-        quadratic = len(points) >= 8 or len(self.extra) >= 100
+        pca_mean = pca_full = None
+        if x.shape[1] > N_FEATURES:
+            patches = x[:, N_FEATURES:]
+            col_mean = np.nanmean(patches, axis=0)
+            patches = np.where(np.isnan(patches), col_mean, patches)
+            pca_mean = patches.mean(axis=0)
+            _, _, vt = np.linalg.svd(patches - pca_mean, full_matrices=False)
+            pca_full = vt[: min(N_PCA, len(patches) - 1)]
+            x = np.hstack([x[:, :N_FEATURES], patches])
+        n_distinct = len(points) + (len(self.extra) // 10)
+        # Candidate amounts of appearance information; cross-validation decides.
+        ks = [0] if pca_full is None else sorted({0, *(k for k in (4, 8, N_PCA) if k <= len(pca_full)
+                                                        and k <= max(4, n_distinct // 2))})
 
-        # Leave-one-point-out cross-validation to pick the ridge strength.
         best = None
-        for ridge in RIDGE_GRID:
-            results = []
-            for idx, _ in points:
-                target = np.array(self.targets[idx])
-                near = (groups == -1) & (np.linalg.norm(y - target, axis=1) < CV_EXCLUSION_RADIUS)
-                train = (groups != idx) & ~near
-                coef = _solve(_design(z[train], quadratic), y[train], ridge, w[train])
-                pred = np.median(_design(z[groups == idx], quadratic) @ coef, axis=0)
-                results.append((*self.targets[idx], float(pred[0]), float(pred[1])))
-            err = float(np.mean([np.hypot(tx - px, ty - py) for tx, ty, px, py in results]))
-            if best is None or err < best[0]:
-                best = (err, ridge, results)
-        err, ridge, results = best
+        for k in ks:
+            comp = pca_full[:k] if k else None
+            feats = _project(x, pca_mean if k else None, comp)
+            mean = feats.mean(axis=0)
+            floor = np.concatenate([STD_FLOOR, np.full(feats.shape[1] - N_FEATURES, PCA_STD_FLOOR)])
+            std = np.maximum(feats.std(axis=0), floor[: feats.shape[1]])
+            z = (feats - mean) / std
+            quadratic = len(points) >= 8 or len(self.extra) >= 100
+            # Leave-one-point-out cross-validation picks k and the ridge strength.
+            for ridge in RIDGE_GRID:
+                results = []
+                for idx, _ in points:
+                    target = np.array(self.targets[idx])
+                    near = (groups == -1) & (np.linalg.norm(y - target, axis=1) < CV_EXCLUSION_RADIUS)
+                    train = (groups != idx) & ~near
+                    coef = _solve(_design(z[train], quadratic), y[train], ridge, w[train])
+                    pred = np.median(_design(z[groups == idx], quadratic) @ coef, axis=0)
+                    results.append((*self.targets[idx], float(pred[0]), float(pred[1])))
+                err = float(np.mean([np.hypot(tx - px, ty - py) for tx, ty, px, py in results]))
+                if best is None or err < best[0] - 1e-9:
+                    best = (err, ridge, results, k, mean, std, z, quadratic)
+        err, ridge, results, k, mean, std, z, quadratic = best
         coef = _solve(_design(z, quadratic), y, ridge, w)
+        pca_comp = pca_full[:k] if k else None
+        if not k:
+            pca_mean = None
         return GazeModel(mean=mean, std=std, coef=coef, quadratic=quadratic, eye=self.eye,
-                         fit_error=err, ridge=ridge, point_results=results)
+                         fit_error=err, ridge=ridge, point_results=results, pca_mean=pca_mean, pca_comp=pca_comp)

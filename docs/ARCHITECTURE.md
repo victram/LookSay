@@ -70,6 +70,20 @@ flowchart LR
   the user. It is more honest than the training error. The result screen
   draws each target and where the model placed the gaze. 5, 9 and 13 points
   are available.
+- **Eye-image (appearance) features.** Each frame, both eyes are cut out
+  along their corner axis, resized to 24×12 and contrast-normalised. Head
+  roll, distance and lighting level do not change the patch. In the model,
+  the patches are reduced by PCA (fitted on the calibration data), and
+  0, 4, 8 or 16 components join the regression. Leave-one-point-out
+  cross-validation chooses how many, so the eye images are used only when
+  they validate better. On synthetic data with noisy landmarks and
+  pursuit-sized datasets they cut the error to well under half. With only
+  13 points the model falls back to geometry. Iris offsets are measured
+  from the eye-corner midpoint, which is fixed to the skull; the lid-contour
+  centroid moves with vertical gaze.
+- **Filter tuning.** The One Euro filter's speed coefficient is 1.5 per
+  screen width per second. It used to be 0.004, which turned the filter into
+  a fixed 0.45 Hz low-pass with about 0.35 s of lag.
 - **More calibration data.** After the fixation points, the user follows
   a dot moving along a Lissajous path for 14 s. The eye/pipeline lag (about
   100–250 ms) is estimated by testing lags from 0 to 0.33 s against a
