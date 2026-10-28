@@ -47,7 +47,7 @@ def window(qapp, tmp_path):
 
     db = Database(tmp_path / "ui.sqlite3")
     settings = Settings(db)
-    for key, value in {"input_source": "gaze", "dwell_ms": 400, "cooldown_ms": 300, "tracking_eye": "right",
+    for key, value in {"input_source": "gaze", "dwell_ms": 400, "cooldown_ms": 700, "tracking_eye": "right",
                        "smoothing": 0, "auto_drift": False, "pointer_mode": "eyes"}.items():
         settings.set(key, value)
     w = MainWindow(settings, db, Predictor(DICTS, store=db), NullSpeech(), enable_tracking=False)
@@ -71,7 +71,7 @@ def gaze(w, qapp, x, y, seconds, **kw):
         time.sleep(0.015)
 
 
-def look_at(w, qapp, button, seconds=0.75):
+def look_at(w, qapp, button, seconds=1.0):
     c = button.mapTo(w, button.rect().center())
     gaze(w, qapp, c.x() / w.width(), c.y() / w.height(), seconds)
     gaze(w, qapp, 0.5, 0.02, 0.2)  # look away at the canvas (no button)

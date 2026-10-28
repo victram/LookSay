@@ -89,3 +89,12 @@ def test_blink_trigger_needs_minimum_hold():
     run(sel, "a", 0.1, 0.5)
     assert sel.trigger(0.5) == "a"
     assert sel.trigger(0.55) is None  # cooldown
+
+
+def test_cancel_keeps_cooldown():
+    sel = DwellSelector(dwell_s=0.3, cooldown_s=1.0)
+    selected, _ = run(sel, "a", 0.0, 0.4)
+    assert len(selected) == 1
+    sel.cancel()
+    selected, _ = run(sel, "a", 0.4, 1.2)
+    assert selected == []  # still cooling down

@@ -79,6 +79,14 @@ flowchart LR
   precision ("gaze + head pinpointing"). The nose-only mode uses a 5- or
   9-point "point your nose at the dot" ridge calibration with
   leave-one-point-out error, like the eye model.
+- **Smooth cursor.** The UI loop runs at 60 Hz and animates the cursor
+  towards the latest tracked point (frame-rate independent exponential
+  approach, τ = 50 ms), so it moves continuously between 15–30 Hz camera
+  frames instead of stepping. Hit-testing uses the same animated point.
+- **Camera frame rate.** On Windows and Linux the camera is opened in MJPG,
+  because many USB webcams only reach 30 fps at 720p in MJPG. If the measured
+  rate is still under 18 fps after 3 s, capture falls back once to
+  640×480. The K view shows the real size, the fps and the reason.
 - **Fixation stabiliser.** After the One Euro filter, a dispersion-based
   (I-DT style) window holds the cursor at the mean while the gaze stays
   within 3% of the window for 0.3 s. A saccade resets it immediately. This
@@ -150,7 +158,7 @@ From `python tools/benchmark.py` on a 4-vCPU Intel Xeon @ 2.8 GHz cloud VM
 | Load a language (20k words) | 64 | |
 
 At ~11 ms per frame, analysis has headroom for 30 FPS on this CPU. The UI
-loop ticks at 30 Hz (31.7 FPS measured in Diagnostics). On this VM the
+loop ticks at 60 Hz. On this VM the
 benchmark process peaks at about 215 MB RSS. The PyInstaller folder build is
 619 MB on Linux (≈167 MB xz-compressed). Most of that is `libmediapipe`
 (122 MB), OpenCV (~200 MB) and Qt (~130 MB).

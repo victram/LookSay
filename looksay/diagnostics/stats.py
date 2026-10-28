@@ -49,6 +49,8 @@ class TrackingStats:
     avg_inference_ms: float = 0.0
     camera_ok: bool = False
     camera_error: str = ""
+    camera_note: str = ""  # e.g. automatic resolution fallback
+    capture_size: tuple[int, int] = (0, 0)  # actual frame size delivered by the camera
 
     def record_inference(self, ms: float) -> None:
         self.last_inference_ms = ms

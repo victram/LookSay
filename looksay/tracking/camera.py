@@ -22,6 +22,12 @@ log = logging.getLogger(__name__)
 
 RECONNECT_DELAY_S = 2.0
 MAX_CONSECUTIVE_FAILURES = 15
+# Many USB webcams only reach 30 fps at 720p in MJPG; uncompressed they drop
+# to 5-10 fps, which makes the cursor move in steps. If the measured rate is
+# still too low after a few seconds, fall back to 640x480 (one time).
+LOW_FPS = 18.0
+FPS_CHECK_AFTER_S = 3.0
+FALLBACK_RESOLUTION = (640, 480)
 
 
 @dataclass
@@ -74,6 +80,8 @@ class CaptureThread(threading.Thread):
         if not cap.isOpened():
             cap.release()
             return None
+        if sys.platform != "darwin":  # AVFoundation picks its own format
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
         cap.set(cv2.CAP_PROP_FPS, self.fps)
@@ -95,6 +103,8 @@ class CaptureThread(threading.Thread):
                 continue
             self.stats.camera_ok, self.stats.camera_error = True, ""
             failures = 0
+            opened_at = time.monotonic()
+            fps_checked = False
             min_interval = 1.0 / max(1, self.fps)
             last = 0.0
             while not self._stop.is_set():
@@ -117,6 +127,16 @@ class CaptureThread(threading.Thread):
                 self.stats.frames_captured += 1
                 self.stats.capture_fps.tick()
                 self.slot.put(Frame(image, now, index))
+                if not fps_checked and now - opened_at >= FPS_CHECK_AFTER_S:
+                    fps_checked = True
+                    rate = self.stats.capture_fps.rate
+                    self.stats.capture_size = (image.shape[1], image.shape[0])
+                    if rate < LOW_FPS and image.shape[1] > FALLBACK_RESOLUTION[0]:
+                        log.warning("Camera gives only %.1f fps at %dx%d; switching to %dx%d", rate,
+                                    image.shape[1], image.shape[0], *FALLBACK_RESOLUTION)
+                        self.stats.camera_note = f"{rate:.0f} fps at {image.shape[1]}x{image.shape[0]}: using 640x480"
+                        self.resolution = FALLBACK_RESOLUTION
+                        break  # reopen at the lower resolution
             cap.release()
             if not self._stop.is_set():
                 self._stop.wait(RECONNECT_DELAY_S)

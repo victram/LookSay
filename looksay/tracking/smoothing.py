@@ -51,3 +51,32 @@ class OneEuroFilter:
         a = _alpha(cutoff, dt)
         self._x = a * x + (1 - a) * self._x
         return self._x
+
+
+class CursorAnimator:
+    """Moves the drawn cursor smoothly towards the latest tracked point.
+
+    Tracking updates arrive at the camera rate (15-30 Hz, sometimes uneven);
+    the UI runs at 60 Hz. Without this, the cursor jumps from sample to
+    sample. Each UI frame moves a fraction of the remaining distance
+    (frame-rate independent exponential approach), so motion is continuous.
+    """
+
+    def __init__(self, tau_s: float = 0.05):
+        self.tau_s = tau_s
+        self.pos: np.ndarray | None = None
+        self._t: float | None = None
+
+    def reset(self) -> None:
+        self.pos = None
+        self._t = None
+
+    def step(self, target: np.ndarray, now: float) -> np.ndarray:
+        target = np.asarray(target, dtype=np.float64)
+        if self.pos is None or self._t is None:
+            self.pos = target.copy()
+        else:
+            dt = min(0.1, max(0.0, now - self._t))
+            self.pos = self.pos + (target - self.pos) * (1.0 - math.exp(-dt / self.tau_s))
+        self._t = now
+        return self.pos

@@ -312,3 +312,15 @@ def test_head_vector_from_landmarks_moves_with_nose():
     f1 = compute_features(pts2, 640, 480, 0.0)
     assert f1.nose_x < f0.nose_x
     assert f0.head_vector().shape == (4,)
+
+
+def test_cursor_animator_moves_smoothly_between_camera_frames():
+    from looksay.tracking.smoothing import CursorAnimator
+
+    anim = CursorAnimator(tau_s=0.05)
+    anim.step(np.array([0.0, 0.0]), 0.0)
+    xs = [anim.step(np.array([1.0, 0.0]), i / 60)[0] for i in range(1, 31)]  # target jumps once
+    steps = np.diff([0.0] + xs)
+    assert all(d > 0 for d in steps)  # moves every UI frame, never backwards
+    assert max(steps) < 0.3  # no single big jump
+    assert xs[-1] > 0.99  # arrives within half a second

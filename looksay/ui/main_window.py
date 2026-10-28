@@ -26,6 +26,7 @@ from looksay.storage.settings import Settings
 from looksay.tracking.blink import BlinkDetector
 from looksay.tracking.features import FaceFeatures
 from looksay.tracking.gaze import GazeEstimator, GazeSample
+from looksay.tracking.smoothing import CursorAnimator
 from looksay.ui import theme
 from looksay.ui.calibration_view import CalibrationOverlay
 from looksay.ui.debug_view import BAD, DIM, FG, OK, WARN, DebugOverlay
@@ -36,7 +37,7 @@ from looksay.ui.widgets import GazeButton, GazeCursor, MessageCanvas
 
 log = logging.getLogger(__name__)
 
-TICK_MS = 33
+TICK_MS = 16  # 60 Hz UI loop: the cursor is animated between camera frames
 MOUSE_PRIORITY_S = 1.5  # in "both" mode, mouse movement overrides gaze for this long
 STALE_FEATURES_S = 0.6
 MESSAGE_S = 5.0
@@ -63,6 +64,7 @@ class MainWindow(QWidget):
         self.dwell = DwellSelector()
         self.estimator = GazeEstimator()
         self.blink = BlinkDetector()
+        self.cursor_animator = CursorAnimator()
         self.click_sound: ClickSound | None = None
         self.ui_fps = RateCounter()
         self.worker = None
@@ -247,7 +249,8 @@ class MainWindow(QWidget):
                       f"  input {self._last_source}", FG))
         if stats is not None:
             lines.append((f"CAMERA  {'OK' if stats.camera_ok else stats.camera_error or '…'}"
-                          f"  {self.settings['camera_resolution']} {stats.capture_fps.rate:4.1f} fps"
+                          f"  {'%dx%d' % stats.capture_size if stats.capture_size[0] else self.settings['camera_resolution']}"
+                          f" {stats.capture_fps.rate:4.1f} fps {stats.camera_note}"
                           f"  track {stats.process_fps.rate:4.1f} fps  {stats.avg_inference_ms:4.1f} ms",
                           FG if stats.camera_ok else BAD))
             lines.append((f"CPU     dropped {stats.frames_dropped}/{stats.frames_captured}"
@@ -499,7 +502,8 @@ class MainWindow(QWidget):
             return QPointF(self.mapFromGlobal(global_pos)), "mouse", True, False
         if not gaze_fresh:
             return None, "gaze", False, False
-        point = QPointF(sample.x * self.width(), sample.y * self.height())
+        pos = self.cursor_animator.step(np.array([sample.x, sample.y]), now)
+        point = QPointF(pos[0] * self.width(), pos[1] * self.height())
         return point, "gaze", sample.usable, sample.state == "blink"
 
     def _target_at(self, point: QPointF | None) -> GazeButton | None:
@@ -561,7 +565,7 @@ class MainWindow(QWidget):
 
     def _toggle_pause(self) -> None:
         self.paused = not self.paused
-        self.dwell.reset()
+        self.dwell.cancel()  # keep the cooldown, so one long look cannot toggle twice
         self._update_status(self._last_source, force=True)
 
     def _update_status(self, source: str, force: bool = False) -> None:

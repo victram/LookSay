@@ -44,6 +44,10 @@ class DwellSelector:
         self._away_since: float | None = None
         self._cooldown_until = 0.0
 
+    def cancel(self) -> None:
+        """Drop the current target and progress but keep the cooldown running."""
+        self._target, self._elapsed, self._away_since = None, 0.0, None
+
     @property
     def target(self) -> Hashable | None:
         return self._target

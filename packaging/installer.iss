@@ -1,7 +1,7 @@
 ; Inno Setup script for a Windows installer (run after PyInstaller).
 ;   iscc packaging\installer.iss   (optionally /DAppVersion=1.2.3)
 #ifndef AppVersion
-  #define AppVersion "0.3.0"
+  #define AppVersion "0.3.1"
 #endif
 
 [Setup]
