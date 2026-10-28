@@ -45,7 +45,7 @@ class GazeButton(QPushButton):
         rect = QRectF(self.rect()).adjusted(2, 2, -2, -2)
         painter.setPen(QPen(self.accent, 3))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(rect, 10, 10)
+        painter.drawRoundedRect(rect, 13, 13)
         if self._progress > 0:
             bar_h = max(6.0, rect.height() * 0.09)
             bar = QRectF(rect.left() + 6, rect.bottom() - bar_h - 4, (rect.width() - 12) * self._progress, bar_h)
@@ -83,10 +83,13 @@ class MessageCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), self.background)
-        margin = 24
+        margin = 44
         width = self.width() - 2 * margin
         font = QFont(self.font())
+        font.setFamily("Inter")
         font.setPointSize(self._point_size)
+        font.setWeight(QFont.Weight.Medium)
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, -self._point_size * 0.03)
         layout = QTextLayout(self._text, font)
         option = QTextOption()
         option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
@@ -109,7 +112,7 @@ class MessageCanvas(QWidget):
         painter.setPen(self.foreground)
         layout.draw(painter, origin)
         painter.setPen(QPen(self.caret_color))
-        layout.drawCursor(painter, origin, len(self._text), max(3, self._point_size // 10))
+        layout.drawCursor(painter, origin, len(self._text), max(3, self._point_size // 12))
         painter.end()
 
 

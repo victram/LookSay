@@ -15,7 +15,7 @@ WORD_GRID_COLS = 5
 
 def _row(buttons: list[GazeButton], stretches: list[int] | None = None) -> QHBoxLayout:
     layout = QHBoxLayout()
-    layout.setSpacing(8)
+    layout.setSpacing(10)
     layout.setContentsMargins(0, 0, 0, 0)
     for i, b in enumerate(buttons):
         layout.addWidget(b, stretches[i] if stretches else 1)
@@ -36,8 +36,8 @@ class KeyboardPanel(QWidget):
         self._symbols = False
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 8, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(40, 6, 40, 32)
+        root.setSpacing(12)
 
         self.suggestion_buttons = [self._button("", "suggestion", "suggest") for _ in range(6)]
         self.suggestion_row = QWidget()
@@ -48,11 +48,11 @@ class KeyboardPanel(QWidget):
         self.letters_page = QWidget()
         self.letters_layout = QVBoxLayout(self.letters_page)
         self.letters_layout.setContentsMargins(0, 0, 0, 0)
-        self.letters_layout.setSpacing(8)
+        self.letters_layout.setSpacing(10)
         self.words_page = QWidget()
         words_layout = QVBoxLayout(self.words_page)
         words_layout.setContentsMargins(0, 0, 0, 0)
-        words_layout.setSpacing(8)
+        words_layout.setSpacing(10)
         self.word_buttons: list[GazeButton] = []
         for _ in range(WORD_GRID_ROWS):
             row = [self._button("", "suggestion", "suggest") for _ in range(WORD_GRID_COLS)]
@@ -65,19 +65,19 @@ class KeyboardPanel(QWidget):
         self.shift_btn = self._button("", "special", "shift")
         self.symbols_btn = self._button("", "special", "symbols")
         self.space_btn = self._button("", "special", "space")
-        self.backspace_btn = self._button("⌫", "special", "backspace")
+        self.backspace_btn = self._button("", "special", "backspace")
         self.delete_word_btn = self._button("", "special", "delete_word")
         self.undo_btn = self._button("", "special", "undo")
         edit_row = QWidget()
         edit_row.setLayout(_row(
             [self.shift_btn, self.symbols_btn, self.space_btn, self.backspace_btn, self.delete_word_btn, self.undo_btn],
-            [1, 1, 3, 1, 1, 1],
+            [2, 2, 5, 2, 3, 2],
         ))
         root.addWidget(edit_row, 1)
 
         self.mode_btn = self._button("", "special", "mode")
         self.phrases_btn = self._button("", "special", "phrases")
-        self.speak_btn = self._button("", "special", "speak")
+        self.speak_btn = self._button("", "primary", "speak")
         self.stop_btn = self._button("", "special", "stop")
         self.clear_btn = self._button("", "special", "clear")
         self.language_btn = self._button("", "special", "language")
@@ -85,9 +85,9 @@ class KeyboardPanel(QWidget):
         self.help_btn = self._button("", "emergency", "help")
         control_row = QWidget()
         control_row.setLayout(_row([
-            self.mode_btn, self.phrases_btn, self.speak_btn, self.stop_btn, self.clear_btn,
-            self.language_btn, self.settings_btn, self.help_btn,
-        ], [1, 1, 2, 1, 1, 1, 1, 1]))
+            self.mode_btn, self.phrases_btn, self.settings_btn, self.language_btn, self.stop_btn, self.clear_btn,
+            self.speak_btn, self.help_btn,
+        ], [1, 1, 1, 1, 1, 1, 2, 1]))
         root.addWidget(control_row, 1)
 
         self._letter_buttons: list[GazeButton] = []
@@ -168,13 +168,14 @@ class KeyboardPanel(QWidget):
     def retranslate(self) -> None:
         lang = self.lang
         self.shift_btn.setText(tr("shift", lang))
-        self.symbols_btn.setText("abc" if self._symbols else ("123 " + ("àé" if lang != "en" else "!?")))
+        self.symbols_btn.setText("abc" if self._symbols else ("123 " + ("àé" if lang != "en" else "?!")))
         self.space_btn.setText(tr("space", lang))
         self.delete_word_btn.setText(tr("delete_word", lang))
         self.undo_btn.setText(tr("undo", lang))
         self.mode_btn.setText(tr("mode_words" if self.mode == "letters" else "mode_letters", lang))
         self.phrases_btn.setText(tr("phrases", lang))
-        self.speak_btn.setText("🔊 " + tr("speak", lang))
+        self.speak_btn.setText(tr("speak", lang))
+        self.backspace_btn.setText(tr("delete", lang))
         self.stop_btn.setText(tr("stop", lang))
         self.clear_btn.setText(tr("clear", lang))
         self.language_btn.setText(lang.upper())

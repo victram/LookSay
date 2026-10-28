@@ -45,7 +45,7 @@ class PhrasesPage(QWidget):
         self.delete_mode = False
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 8, 12, 12)
+        root.setContentsMargins(40, 6, 40, 32)
         root.setSpacing(8)
         self.back_btn = GazeButton("", "special")
         self.save_btn = GazeButton("", "special")
@@ -108,7 +108,7 @@ class PhrasesPage(QWidget):
                 p = self.phrases[idx]
                 b.setText(p["text"])
                 b.setEnabled(True)
-                b.set_role("emergency" if p["is_emergency"] else "suggestion")
+                b.set_role("urgent" if p["is_emergency"] else "suggestion")
             else:
                 b.setText("")
                 b.setEnabled(False)
@@ -146,15 +146,15 @@ class SettingsPage(QWidget):
         self.page = 0
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 8, 12, 12)
+        root.setContentsMargins(40, 6, 40, 32)
         root.setSpacing(6)
 
-        self.back_btn = GazeButton("", "special")
+        self.back_btn = GazeButton("", "small")
         self.back_btn.clicked.connect(self.back.emit)
         self.group_buttons: dict[str, GazeButton] = {}
         top_widgets = [self.back_btn]
         for g in SETTING_GROUPS:
-            b = GazeButton("", "special")
+            b = GazeButton("", "small")
             b.clicked.connect(lambda _=False, g=g: self._select_group(g))
             self.group_buttons[g] = b
             top_widgets.append(b)
@@ -179,21 +179,22 @@ class SettingsPage(QWidget):
             self.rows.append((label, minus, value, plus))
         root.addLayout(rows_box, 5)
 
-        self.prev_btn = GazeButton("", "special")
-        self.next_btn = GazeButton("", "special")
+        self.prev_btn = GazeButton("", "small")
+        self.next_btn = GazeButton("", "small")
         self.prev_btn.clicked.connect(lambda: self._turn(-1))
         self.next_btn.clicked.connect(lambda: self._turn(1))
         self.command_buttons: dict[str, GazeButton] = {}
-        bottom = [self.prev_btn, self.next_btn]
-        for name in ("calibrate", "calibrate_head", "recenter", "diagnostics", "export", "import", "reset_settings",
-                     "reset_data"):
-            b = GazeButton("", "emergency" if name == "reset_data" else "special")
+        rows = [[self.prev_btn, self.next_btn], []]
+        for i, name in enumerate(("calibrate", "calibrate_head", "recenter", "diagnostics", "export", "import",
+                                  "reset_settings", "reset_data")):
+            b = GazeButton("", "small_danger" if name == "reset_data" else "small")
             b.clicked.connect(lambda _=False, n=name: self.command.emit(n))
             self.command_buttons[name] = b
-            bottom.append(b)
-        bw = QWidget()
-        bw.setLayout(_hbox(*bottom))
-        root.addWidget(bw, 1)
+            rows[0 if i < 3 else 1].append(b)
+        for row in rows:  # two rows, so every label fits
+            bw = QWidget()
+            bw.setLayout(_hbox(*row))
+            root.addWidget(bw, 1)
         self.retranslate()
 
     def _specs(self):
@@ -252,7 +253,7 @@ class SettingsPage(QWidget):
         self.prev_btn.setEnabled(many)
         self.next_btn.setEnabled(many)
         for g, b in self.group_buttons.items():
-            b.set_role("active" if g == self.group else "special")
+            b.set_role("small_active" if g == self.group else "small")
 
     def retranslate(self) -> None:
         lang = self.lang
@@ -285,7 +286,7 @@ class DiagnosticsPage(QWidget):
         self.setObjectName("Page")
         self.lang = "en"
         root = QHBoxLayout(self)
-        root.setContentsMargins(12, 8, 12, 12)
+        root.setContentsMargins(40, 6, 40, 32)
         root.setSpacing(12)
         left = QVBoxLayout()
         self.back_btn = GazeButton("", "special")

@@ -19,7 +19,7 @@ from looksay.diagnostics.stats import RateCounter
 from looksay.i18n.strings import LANGUAGES, tr
 from looksay.input.dwell import DwellSelector
 from looksay.input.text_buffer import TextBuffer
-from looksay.paths import exports_dir
+from looksay.paths import exports_dir, resources_dir
 from looksay.prediction.engine import Predictor
 from looksay.speech.tts import NullSpeech, SpeechEngine
 from looksay.storage.database import Database
@@ -130,29 +130,33 @@ class MainWindow(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        self.canvas = MessageCanvas()
-        root.addWidget(self.canvas, 40)
-        self.preview_label = QLabel(self.canvas)  # optional camera preview, off by default
-        self.preview_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.preview_label.hide()
-
+        # Top bar: logo, tracking status, transient message, Pause (design "Papel").
         strip = QWidget()
         strip.setObjectName("Page")
         strip_layout = QHBoxLayout(strip)
-        strip_layout.setContentsMargins(16, 4, 16, 0)
+        strip_layout.setContentsMargins(40, 24, 40, 0)
+        strip_layout.setSpacing(14)
+        self.logo_label = QLabel()  # pixmap set by the theme (black or white logo)
         self.status_label = QLabel("")
         self.status_label.setObjectName("Status")
         self.message_label = QLabel("")
         self.message_label.setObjectName("Title")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pause_btn = GazeButton("", "special")
-        self.pause_btn.setMinimumSize(180, 52)
-        self.pause_btn.setMaximumHeight(60)
+        self.pause_btn = GazeButton("", "pill")
+        self.pause_btn.setMinimumSize(150, 48)
+        self.pause_btn.setMaximumHeight(52)
         self.pause_btn.clicked.connect(self._toggle_pause)
+        strip_layout.addWidget(self.logo_label, 0)
         strip_layout.addWidget(self.status_label, 3)
         strip_layout.addWidget(self.message_label, 4)
         strip_layout.addWidget(self.pause_btn, 1)
         root.addWidget(strip, 0)
+
+        self.canvas = MessageCanvas()
+        root.addWidget(self.canvas, 34)
+        self.preview_label = QLabel(self.canvas)  # optional camera preview, off by default
+        self.preview_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.preview_label.hide()
 
         self.pages = QStackedWidget()
         self.keyboard = KeyboardPanel()
@@ -169,7 +173,7 @@ class MainWindow(QWidget):
         self.diagnostics_page.back.connect(self._leave_diagnostics)
         for page in (self.keyboard, self.phrases_page, self.settings_page, self.diagnostics_page):
             self.pages.addWidget(page)
-        root.addWidget(self.pages, 60)
+        root.addWidget(self.pages, 66)
 
         self.confirm = ConfirmOverlay(self)
         self.calibration = CalibrationOverlay(self, self.estimator.raw_point)
@@ -375,6 +379,10 @@ class MainWindow(QWidget):
         p = theme.palette(s["theme"], s["contrast"])
         self.setStyleSheet(theme.stylesheet(p, s["key_scale"]))
         self.canvas.set_colors(p.canvas, p.canvas_text, p.accent)
+        logo = resources_dir() / ("icon-white.png" if s["theme"] == "night" else "icon.png")
+        if logo.exists():
+            self.logo_label.setPixmap(QPixmap(str(logo)).scaled(
+                40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         GazeButton.accent = QColor(p.accent)
         self.gaze_cursor.color = QColor(p.accent)
         self.calibration.dot_color = QColor(p.accent)
@@ -697,7 +705,7 @@ class MainWindow(QWidget):
         pause_text = tr("resume" if self.paused else "pause", lang)
         if self.pause_btn.text() != pause_text:
             self.pause_btn.setText(pause_text)
-            self.pause_btn.set_role("active" if self.paused else "special")
+            self.pause_btn.set_role("active" if self.paused else "pill")
 
     def show_message(self, text: str) -> None:
         self._message = text

@@ -40,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
+    from PySide6.QtGui import QFont, QFontDatabase
+
+    for font_file in sorted((resources_dir() / "fonts").glob("*.otf")):
+        QFontDatabase.addApplicationFont(str(font_file))  # bundled Inter (OFL), same look on every OS
+    app.setFont(QFont("Inter", 12))
     icon = resources_dir() / "icon.png"
     if icon.exists():
         app.setWindowIcon(QIcon(str(icon)))

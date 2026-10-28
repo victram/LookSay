@@ -55,7 +55,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("language", "en", "display", choices=("en", "es", "ca")),
     SettingSpec("theme", "day", "display", choices=("day", "night")),
     SettingSpec("contrast", "normal", "display", choices=("normal", "high")),
-    SettingSpec("text_size", 36, "display", minimum=16, maximum=96, step=4),
+    SettingSpec("text_size", 48, "display", minimum=16, maximum=96, step=4),
     SettingSpec("key_scale", 1.0, "display", minimum=0.7, maximum=1.8, step=0.1),
     SettingSpec("sound_feedback", False, "display"),
     # Keyboard
