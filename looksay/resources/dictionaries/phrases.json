@@ -1,0 +1,11 @@
+{
+  "en": [["I need help", true], ["Call the nurse, please", true], ["I am in pain", true],
+         ["Yes", false], ["No", false], ["Thank you", false], ["I need water", false],
+         ["I am tired", false], ["Please wait", false], ["I love you", false]],
+  "es": [["Necesito ayuda", true], ["Llama a la enfermera, por favor", true], ["Tengo dolor", true],
+         ["Sí", false], ["No", false], ["Gracias", false], ["Necesito agua", false],
+         ["Estoy cansado", false], ["Espera, por favor", false], ["Te quiero", false]],
+  "ca": [["Necessito ajuda", true], ["Truca a la infermera, si us plau", true], ["Tinc dolor", true],
+         ["Sí", false], ["No", false], ["Gràcies", false], ["Necessito aigua", false],
+         ["Estic cansat", false], ["Espera, si us plau", false], ["T'estimo", false]]
+}

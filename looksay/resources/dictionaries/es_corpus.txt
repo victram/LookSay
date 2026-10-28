@@ -1,0 +1,68 @@
+# Frases semilla para el modelo de bigramas.
+necesito ayuda
+necesito agua
+necesito a la enfermera
+necesito al médico
+necesito ir al baño
+quiero dormir
+quiero ver la tele
+quiero escuchar música
+quiero ir a casa
+estoy cansado
+estoy cansada
+tengo frío
+tengo calor
+tengo hambre
+tengo sed
+tengo dolor
+estoy bien gracias
+me encuentro bien
+me encuentro mal
+te quiero
+muchas gracias
+por favor apaga la luz
+por favor enciende la luz
+por favor enciende la tele
+por favor abre la ventana
+por favor cierra la ventana
+por favor cierra la puerta
+por favor llama a mi familia
+por favor llama a la enfermera
+por favor espera un momento
+por favor muéveme la cabeza
+me duele la espalda
+me duele la cabeza
+me duele la pierna
+me duele el brazo
+puedes ayudarme
+puedes llamar a la enfermera
+puedes abrir la ventana
+puedes darme agua
+puedo tomar agua
+cómo estás
+cómo estás hoy
+qué hora es
+cómo te llamas
+dónde está mi teléfono
+dónde están mis gafas
+cuándo vuelves
+buenos días
+buenas noches
+hasta mañana
+hasta luego
+no lo sé
+no entiendo
+no quiero
+hace mucho frío
+hace mucho calor
+hay mucho ruido
+me duele mucho
+ahora no por favor
+sí por favor
+no gracias
+quiero más
+un poco más
+un poco menos
+vuelve más tarde
+déjame descansar
+cómo ha ido el día

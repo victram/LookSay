@@ -1,0 +1,74 @@
+# Seed sentences used to build the baseline bigram model.
+i need help
+i need water
+i need the nurse
+i need the doctor
+i need to go to the bathroom
+i want to sleep
+i want to watch tv
+i want to listen to music
+i want to go home
+i am tired
+i am cold
+i am hot
+i am hungry
+i am thirsty
+i am in pain
+i am fine thank you
+i am okay
+i feel good
+i feel bad
+i feel sick
+i love you
+thank you very much
+thank you so much
+please turn off the light
+please turn on the light
+please turn on the tv
+please open the window
+please close the window
+please close the door
+please call my family
+please call the nurse
+please wait a minute
+please move my head
+please move my legs
+my back hurts
+my head hurts
+my leg hurts
+my arm hurts
+can you help me
+can you call the nurse
+can you open the window
+can you turn me over
+can you give me some water
+can i have some water
+can i have a blanket
+how are you
+how are you today
+what time is it
+what is your name
+where is my phone
+where are my glasses
+when are you coming back
+good morning
+good night
+see you tomorrow
+see you later
+i don't know
+i don't understand
+i don't want to
+it is too cold
+it is too hot
+it is too loud
+it hurts a lot
+not now please
+yes please
+no thank you
+i want more
+a little more
+a little less
+come back later
+let me rest
+tell me about your day
+how was your day

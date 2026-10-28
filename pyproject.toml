@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "looksay"
+version = "0.1.0"
+description = "Offline, eye-controlled communication for people with severe motor impairments."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6-Essentials>=6.6",
+    "PySide6-Addons>=6.6",
+    "mediapipe>=0.10.14",
+    "numpy>=1.26",
+    "pyttsx3>=2.90",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pyinstaller>=6"]
+
+[project.gui-scripts]
+looksay = "looksay.app:main"
+
+[tool.setuptools.packages.find]
+include = ["looksay*"]
+
+[tool.setuptools.package-data]
+looksay = ["resources/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

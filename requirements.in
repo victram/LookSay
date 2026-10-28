@@ -1,0 +1,6 @@
+# Direct runtime dependencies (loose). The pinned lock is requirements.txt.
+PySide6-Essentials>=6.6      # Qt Widgets UI
+PySide6-Addons>=6.6          # QtTextToSpeech (offline OS voices), QtMultimedia (click sound)
+mediapipe>=0.10.14           # FaceLandmarker with iris landmarks (Tasks API); pulls in OpenCV
+numpy>=1.26
+pyttsx3>=2.90                # speech fallback when Qt has no TTS engine

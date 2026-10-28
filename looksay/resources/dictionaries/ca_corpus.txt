@@ -1,0 +1,66 @@
+# Frases llavor per al model de bigrames.
+necessito ajuda
+necessito aigua
+necessito la infermera
+necessito el metge
+necessito anar al lavabo
+vull dormir
+vull veure la tele
+vull escoltar música
+vull anar a casa
+estic cansat
+estic cansada
+tinc fred
+tinc calor
+tinc gana
+tinc set
+tinc dolor
+estic bé gràcies
+em trobo bé
+em trobo malament
+t'estimo
+moltes gràcies
+si us plau apaga el llum
+si us plau encén el llum
+si us plau encén la tele
+si us plau obre la finestra
+si us plau tanca la finestra
+si us plau tanca la porta
+si us plau truca a la meva família
+si us plau truca a la infermera
+si us plau espera un moment
+em fa mal l'esquena
+em fa mal el cap
+em fa mal la cama
+em fa mal el braç
+em pots ajudar
+pots trucar a la infermera
+pots obrir la finestra
+em pots donar aigua
+com estàs
+com estàs avui
+quina hora és
+com et dius
+on és el meu telèfon
+on són les meves ulleres
+quan tornes
+bon dia
+bona nit
+fins demà
+fins després
+no ho sé
+no ho entenc
+no vull
+fa molt de fred
+fa molta calor
+hi ha molt de soroll
+em fa molt mal
+ara no si us plau
+sí si us plau
+no gràcies
+en vull més
+una mica més
+una mica menys
+torna més tard
+deixa'm descansar
+com ha anat el dia
