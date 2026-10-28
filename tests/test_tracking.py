@@ -238,3 +238,77 @@ def test_real_face_landmarks_if_available():
     assert isinstance(f, FaceFeatures) and f.face_found and f.pose_3d and f.confidence > 0.5
     assert abs(f.right.h) < 0.15 and abs(f.left.h) < 0.15
     assert 20 < abs(f.tz) < 120  # a plausible camera distance in cm
+
+
+class _ConstModel:
+    """Eye model stub returning a settable point."""
+    version, fit_error = 2, 0.0
+
+    def __init__(self):
+        self.p = np.array([0.5, 0.5])
+
+    def predict(self, x):
+        return self.p[None, :]
+
+
+def _face(t, nose_x=0.0, nose_y=0.3):
+    f = compute_features(synthetic_landmarks(), 640, 480, t)
+    f.nose_x, f.nose_y = nose_x, nose_y
+    return f
+
+
+def test_eyes_plus_nose_ignores_eye_jitter_and_fine_tunes_with_head():
+    est = GazeEstimator()
+    est.set_smoothing(0)
+    stub = _ConstModel()
+    est.model = stub
+    assert est.mode == "eyes_head" and est.ready
+    rng = np.random.default_rng(0)
+    xs = []
+    for i in range(30):  # fixating with noisy eyes, head still
+        stub.p = np.array([0.5, 0.5]) + rng.normal(0, 0.02, 2)
+        s = est.update(_face(i / 30))
+        xs.append((s.x, s.y))
+    assert np.std(np.array(xs[5:]), axis=0).max() < 0.005  # eye jitter does not move the cursor
+    start = np.array(xs[-1])
+    for i in range(30, 60):  # small head turn to the user's right -> cursor moves right
+        stub.p = np.array([0.5, 0.5]) + rng.normal(0, 0.02, 2)
+        s = est.update(_face(i / 30, nose_x=-0.02))
+    assert 0.01 < s.x - start[0] < 0.06 and abs(s.y - start[1]) < 0.01
+    for i in range(60, 75):  # gaze jumps far away -> cursor follows the eyes
+        stub.p = np.array([0.15, 0.85])
+        s = est.update(_face(i / 30, nose_x=-0.02))
+    assert abs(s.x - 0.15) < 0.03 and abs(s.y - 0.85) < 0.03
+
+
+def test_nose_mode_needs_head_calibration_and_follows_head():
+    from looksay.calibration.head_model import fit_head_model
+
+    est = GazeEstimator()
+    est.set_mode("head")
+    assert not est.ready
+    assert est.update(_face(0.0)).state == "uncalibrated"
+    targets = calibration_targets(5, margin=0.12)
+    rng = np.random.default_rng(1)
+    samples = {i: [np.array([-(tx - 0.5) * 0.4, 0.3 + (ty - 0.5) * 0.3, 0, 0]) + rng.normal(0, 0.002, 4)
+                   for _ in range(15)] for i, (tx, ty) in enumerate(targets)}
+    model = fit_head_model(targets, samples)
+    assert model is not None and model.fit_error < 0.03
+    est.set_head_model(model)
+    est.set_smoothing(0)
+    for i in range(20):
+        s = est.update(_face(i / 30, nose_x=-0.12, nose_y=0.3 + 0.1))  # looking right and down
+    assert s.state == "ok" and s.x > 0.7 and s.y > 0.7
+    # eyes closed does not freeze the nose pointer
+    closed = compute_features(synthetic_landmarks(eye_open=0.001), 640, 480, 2.0)
+    assert est.update(closed).state != "blink"
+
+
+def test_head_vector_from_landmarks_moves_with_nose():
+    pts = synthetic_landmarks()
+    f0 = compute_features(pts, 640, 480, 0.0)
+    pts2 = pts.copy()
+    pts2[1, 0] -= 0.02  # nose moves to image-left
+    f1 = compute_features(pts2, 640, 480, 0.0)
+    assert f1.nose_x < f0.nose_x
+    assert f0.head_vector().shape == (4,)

@@ -41,6 +41,16 @@ python -m looksay              # add --mouse to try it without a camera
 A caregiver can also use the mouse: hovering over a key selects it, and
 clicking works too. Press F11 for full screen.
 
+**Pointer modes** (Settings ▸ Eye tracking ▸ Pointer):
+
+- **Eyes + nose** (default): look at a key and the cursor jumps close to it;
+  then turn your head slightly to move the cursor precisely onto the key. Eye
+  jitter does not move the cursor while you fine-tune.
+- **Nose (head)**: the cursor follows your head, like a mouse. It is the most
+  precise mode if you can move your head a little. Run **Calibrate nose**
+  first.
+- **Eyes**: gaze only.
+
 Press **K** on the computer's keyboard to open the full-screen tracking debug view: the
 camera image of the face, a magnified view of each eye with the detected
 iris, and live numbers (confidence, head pose and distance, iris offsets,
@@ -51,7 +61,7 @@ before calibrating.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                          # 85 tests, including headless UI tests driven by simulated gaze
+pytest -q                          # 89 tests, including headless UI tests driven by simulated gaze
 python tools/benchmark.py          # measured timings on your machine
 pyinstaller packaging/looksay.spec # self-contained build (see docs/BUILDING.md)
 ```

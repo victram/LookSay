@@ -12,6 +12,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout, QWidget
 
+from looksay.calibration.head_model import HeadModel
 from looksay.calibration.model import GazeModel
 from looksay.diagnostics.stats import RateCounter
 from looksay.i18n.strings import LANGUAGES, tr
@@ -75,6 +76,7 @@ class MainWindow(QWidget):
         self._message = ""
         self._message_until = 0.0
         self._model_before_calibration: GazeModel | None = None
+        self._head_before_calibration: HeadModel | None = None
         self._last_source = "mouse"
         self._auto_calibrated = False
 
@@ -154,7 +156,7 @@ class MainWindow(QWidget):
 
         self.confirm = ConfirmOverlay(self)
         self.calibration = CalibrationOverlay(self, self.estimator.raw_point)
-        self.calibration.model_ready.connect(self.estimator.set_model)
+        self.calibration.model_ready.connect(self._provisional_model)
         self.calibration.finished.connect(self._calibration_finished)
         self.calibration.recentered.connect(self._recentered)
         self.debug_overlay = DebugOverlay(self)
@@ -211,7 +213,16 @@ class MainWindow(QWidget):
                     f"in {bs.get('eyeLookIn' + side, 0):.2f} out {bs.get('eyeLookOut' + side, 0):.2f} "
                     f"up {bs.get('eyeLookUp' + side, 0):.2f} dn {bs.get('eyeLookDown' + side, 0):.2f}",
                 ] + ([f"refine {np.hypot(*shift):.1f}px"] if shift else [])
-        if est.model is not None and g is not None:
+        hm = est.head_model
+        head = est.last_head
+        lines.append((f"POINTER {est.mode}   nose x {head[0]:+.3f} y {head[1]:+.3f}" if head is not None
+                       else f"POINTER {est.mode}", FG))
+        if est.mode != "eyes":
+            lines.append((f"NOSE    {'calibrated ' + format(hm.error_px(self.width(), self.height()), '.0f') + ' px' if hm else 'default mapping'}"
+                          f"   speed {est.head_gain:.1f}"
+                          + (f"   anchor {est._anchor[0]:.2f},{est._anchor[1]:.2f}" if est._anchor is not None else ""),
+                          FG if hm or est.mode == "eyes_head" else WARN))
+        if est.ready and g is not None:
             raw = est.last_raw
             state_color = OK if g.state == "ok" else WARN
             lines += [
@@ -222,10 +233,12 @@ class MainWindow(QWidget):
                  f"  fixation {'LOCKED' if est.fixation_locked else 'moving'}", FG),
             ]
             m = est.model
+            if m is None:
+                m = hm
             err = m.error_px(self.width(), self.height())
             pct = 100 * err / float(np.hypot(self.width(), self.height()))
             lines.append((f"CALIB   {len(m.point_results)} pts  error {err:.0f} px ({pct:.1f}%)"
-                          f"  ridge {m.ridge:g} {'quad' if m.quadratic else 'linear'}",
+                          f"  {'eyes' if m is est.model else 'nose'}",
                           OK if pct < 4 else (WARN if pct < 8 else BAD)))
         else:
             lines.append(("CALIB   not calibrated (Settings > Calibrate)", WARN))
@@ -268,7 +281,7 @@ class MainWindow(QWidget):
     def _apply_all_settings(self) -> None:
         for key in ("language", "theme", "text_size", "dwell_ms", "cooldown_ms", "keyboard_mode", "keyboard_layout",
                     "sensitivity", "smoothing", "confidence_threshold", "tracking_eye", "gaze_cursor_size",
-                    "fixation_stabilizer",
+                    "fixation_stabilizer", "pointer_mode", "head_gain",
                     "speech_rate", "speech_volume", "speech_voice", "learn_words", "auto_capitalize",
                     "sound_feedback"):
             self._on_setting(key, self.settings[key], initial=True)
@@ -302,6 +315,10 @@ class MainWindow(QWidget):
             self.estimator.sensitivity = value
         elif key == "smoothing":
             self.estimator.set_smoothing(value)
+        elif key == "pointer_mode":
+            self.estimator.set_mode(value)
+        elif key == "head_gain":
+            self.estimator.head_gain = value
         elif key == "fixation_stabilizer":
             self.estimator.stabilize = value
         elif key == "confidence_threshold":
@@ -403,14 +420,20 @@ class MainWindow(QWidget):
                 self.estimator.set_model(GazeModel.from_dict(profile["model"]))
             except (ValueError, KeyError) as exc:
                 log.warning("Ignoring unusable calibration profile: %s", exc)
+        head = self.settings.get("_head_model")
+        if head:
+            try:
+                self.estimator.set_head_model(HeadModel.from_dict(head))
+            except (ValueError, KeyError, TypeError) as exc:
+                log.warning("Ignoring unusable head calibration: %s", exc)
 
     def _on_features(self, features: FaceFeatures) -> None:
         self.last_features = features
-        if (self.estimator.model is None and not self._auto_calibrated and features.face_found
+        if (not self.estimator.ready and not self._auto_calibrated and features.face_found
                 and not self.calibration.isVisible() and not self.confirm.isVisible()):
             # First use: calibrate as soon as a face is visible, so no caregiver is needed.
             self._auto_calibrated = True
-            self.start_calibration("full")
+            self.start_calibration("head" if self.estimator.mode == "head" else "full")
         if self.calibration.collecting:
             self.calibration.feed(features)
         self.gaze_sample = self.estimator.update(features)
@@ -420,8 +443,20 @@ class MainWindow(QWidget):
                 if selected is not None:
                     self._activate(selected, from_gaze=True)
 
-    def _calibration_finished(self, model: GazeModel | None) -> None:
-        if model is not None:
+    def _provisional_model(self, model) -> None:
+        """Use a just-fitted model at once, so the result buttons can be selected with it."""
+        if isinstance(model, HeadModel):
+            self.estimator.set_head_model(model)
+        else:
+            self.estimator.set_model(model)
+
+    def _calibration_finished(self, model) -> None:
+        if isinstance(model, HeadModel):
+            self.settings.set("_head_model", model.to_dict())
+            self.estimator.set_head_model(model)
+        elif self.calibration.mode == "head":
+            self.estimator.set_head_model(self._head_before_calibration)
+        elif model is not None:
             screen = (self.width(), self.height())
             error_px = model.error_px(*screen)
             self.db.save_calibration(datetime.now().strftime("%Y-%m-%d %H:%M"), model.version,
@@ -440,6 +475,7 @@ class MainWindow(QWidget):
             self.show_message(tr("calib_no_camera" if self.worker is None else "status_not_calibrated", self.lang))
             return
         self._model_before_calibration = self.estimator.model
+        self._head_before_calibration = self.estimator.head_model
         self.dwell.reset()
         self.calibration.start(self.settings["calibration_points"], self.settings["tracking_eye"], mode)
         self.gaze_cursor.raise_()
@@ -456,7 +492,7 @@ class MainWindow(QWidget):
         sample = self.gaze_sample
         gaze_fresh = (sample is not None and self.last_features is not None
                       and now - self.last_features.timestamp < STALE_FEATURES_S
-                      and self.estimator.model is not None)
+                      and self.estimator.ready)
         use_mouse = source == "mouse" or (source == "both" and (
             not gaze_fresh or now - self._mouse_moved_at < MOUSE_PRIORITY_S))
         if use_mouse:
@@ -541,8 +577,8 @@ class MainWindow(QWidget):
             text = tr("status_no_camera", lang)
         elif self.last_features is None:
             text = tr("status_starting", lang)
-        elif self.estimator.model is None:
-            text = tr("status_not_calibrated", lang)
+        elif not self.estimator.ready:
+            text = tr("status_head_not_calibrated" if self.estimator.mode == "head" else "status_not_calibrated", lang)
         elif self.gaze_sample is not None and self.gaze_sample.state == "no_face":
             text = tr("status_lost", lang)
         elif self.gaze_sample is not None and self.gaze_sample.state == "low_confidence":
@@ -550,7 +586,7 @@ class MainWindow(QWidget):
         else:
             conf = self.gaze_sample.confidence if self.gaze_sample else 0.0
             text = f"{tr('status_tracking', lang)} · {conf * 100:.0f}%"
-        if source == "mouse" and self.settings["input_source"] == "both" and self.estimator.model is not None:
+        if source == "mouse" and self.settings["input_source"] == "both" and self.estimator.ready:
             text += f" ({tr('status_mouse', lang)})"
         if force or self.status_label.text() != text:
             self.status_label.setText(text)
@@ -691,6 +727,8 @@ class MainWindow(QWidget):
         lang = self.lang
         if name == "calibrate":
             self.start_calibration("full")
+        elif name == "calibrate_head":
+            self.start_calibration("head")
         elif name == "recenter":
             self.start_calibration("recenter")
         elif name == "diagnostics":
@@ -753,7 +791,7 @@ class MainWindow(QWidget):
             "diag_face": yes if f and f.face_found else no,
             "diag_iris": yes if f and f.right is not None else no,
             "diag_gaze": f"{sample.x * self.width():.0f}, {sample.y * self.height():.0f}"
-            if sample and self.estimator.model else "—",
+            if sample and self.estimator.ready else "—",
             "diag_confidence": f"{f.confidence * 100:.0f}%" if f else "—",
             "diag_eye_open": f"{f.left.openness:.2f} / {f.right.openness:.2f}" if f and f.right else "—",
             "diag_capture_fps": f"{stats.capture_fps.rate:.1f}" if stats else "—",

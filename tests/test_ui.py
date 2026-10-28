@@ -48,7 +48,7 @@ def window(qapp, tmp_path):
     db = Database(tmp_path / "ui.sqlite3")
     settings = Settings(db)
     for key, value in {"input_source": "gaze", "dwell_ms": 400, "cooldown_ms": 300, "tracking_eye": "right",
-                       "smoothing": 0, "auto_drift": False}.items():
+                       "smoothing": 0, "auto_drift": False, "pointer_mode": "eyes"}.items():
         settings.set(key, value)
     w = MainWindow(settings, db, Predictor(DICTS, store=db), NullSpeech(), enable_tracking=False)
     w.resize(1200, 800)
@@ -273,3 +273,40 @@ def test_k_key_toggles_debug_overlay_with_live_info(window, qapp):
     assert w.buffer.text == "A"
     QTest.keyClick(w, Qt.Key.Key_K)
     assert not w.debug_overlay.isVisible()
+
+
+def test_nose_calibration_overlay_fits_head_model(qapp, monkeypatch):
+    from PySide6.QtWidgets import QWidget
+
+    import looksay.ui.calibration_view as cv
+    from looksay.calibration.head_model import HeadModel
+
+    class Clock:
+        t = 0.0
+
+        def monotonic(self):
+            return self.t
+
+    clock = Clock()
+    monkeypatch.setattr(cv, "time", clock)
+    parent = QWidget()
+    parent.resize(1000, 600)
+    results = []
+    overlay = cv.CalibrationOverlay(parent, raw_point=lambda f: None)
+    overlay.finished.connect(results.append)
+    overlay.start(9, "both", mode="head")
+    rng = np.random.default_rng(0)
+    for _ in range(3000):
+        clock.t += 0.033
+        if overlay.state == "collect":
+            tx, ty = overlay.targets[overlay.index]
+            f = features(0.5, 0.5)
+            f.nose_x = -(tx - 0.5) * 0.4 + rng.normal(0, 0.002)  # head turned right -> nose to image-left
+            f.nose_y = 0.3 + (ty - 0.5) * 0.3 + rng.normal(0, 0.002)
+            overlay.feed(f)
+        overlay._tick()
+        if overlay.state in ("done", "failed"):
+            break
+    assert overlay.state == "done"
+    overlay.accept_btn.click()
+    assert isinstance(results[0], HeadModel) and results[0].fit_error < 0.02

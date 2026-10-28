@@ -70,6 +70,15 @@ flowchart LR
   the user. It is more honest than the training error. The result screen
   draws each target and where the model placed the gaze. 5, 9 and 13 points
   are available.
+- **Pointer fusion (eyes + nose).** The head cue is the nose tip relative to
+  the face outline (plus 3D yaw and pitch). It moves when the head turns or
+  tilts, not when the head shifts. In the default eyes+nose mode the cursor
+  jumps to the gaze point when the gaze is more than 10% of the window away
+  for 120 ms. Otherwise it stays anchored, and head movement since the jump
+  moves it at half the head-pointer gain. Eyes give speed, the head gives
+  precision ("gaze + head pinpointing"). The nose-only mode uses a 5- or
+  9-point "point your nose at the dot" ridge calibration with
+  leave-one-point-out error, like the eye model.
 - **Fixation stabiliser.** After the One Euro filter, a dispersion-based
   (I-DT style) window holds the cursor at the mean while the gaze stays
   within 3% of the window for 0.3 s. A saccade resets it immediately. This

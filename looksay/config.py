@@ -70,6 +70,8 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
     SettingSpec("cooldown_ms", 400, "selection", minimum=100, maximum=2000, step=100),
     SettingSpec("blink_select", False, "selection"),
     # Tracking
+    SettingSpec("pointer_mode", "eyes_head", "tracking", choices=("eyes_head", "eyes", "head")),
+    SettingSpec("head_gain", 1.0, "tracking", minimum=0.3, maximum=3.0, step=0.1),
     SettingSpec("tracking_eye", "both", "tracking", choices=("both", "left", "right")),
     SettingSpec("calibration_points", 9, "tracking", choices=(5, 9, 13)),
     SettingSpec("sensitivity", 1.0, "tracking", minimum=0.5, maximum=2.0, step=0.1),

@@ -85,6 +85,10 @@ class FaceFeatures:
     confidence: float = 0.0
     inference_ms: float = 0.0
     pose_3d: bool = False
+    # Head-pointer cue: nose tip relative to the face, in face widths. Turning
+    # or tilting the head moves it; shifting the whole head does not.
+    nose_x: float = 0.0
+    nose_y: float = 0.0
     blendshapes: dict[str, float] = field(default_factory=dict)
     landmarks_2d: np.ndarray | None = field(default=None, repr=False)  # (N, 2) normalised, for overlays
     frame_size: tuple[int, int] = (0, 0)
@@ -102,6 +106,13 @@ class FaceFeatures:
         look_v = (r.look_v + l.look_v) / 2.0
         return np.array([r.h, r.v, l.h, l.v, (r.openness + l.openness) / 2.0, look_h, look_v,
                          self.yaw, self.pitch, self.roll, self.tx, self.ty, self.tz], dtype=np.float64)
+
+    def head_vector(self) -> np.ndarray | None:
+        """Features for the nose/head pointer: nose offsets plus 3D yaw/pitch when available."""
+        if not self.face_found:
+            return None
+        return np.array([self.nose_x, self.nose_y, self.yaw if self.pose_3d else 0.0,
+                         self.pitch if self.pose_3d else 0.0], dtype=np.float64)
 
     def eyes_closed(self) -> bool:
         if not self.face_found or self.right is None or self.left is None:
@@ -174,8 +185,13 @@ def compute_features(points: np.ndarray | None, frame_w: int, frame_h: int, time
         tx, ty, tz = center[0] / frame_w - 0.5, center[1] / frame_h - 0.5, 1.0 / (face_w / frame_w)
         pose_3d = False
 
+    nose = pts[NOSE_TIP]
+    eyes_mid = (np.array(right.eye_center) + np.array(left.eye_center)) / 2
+    nose_x = float((nose[0] - (cheek_r[0] + cheek_l[0]) / 2) / face_w)
+    nose_y = float((nose[1] - eyes_mid[1]) / face_w)
     features = FaceFeatures(
         timestamp=timestamp, face_found=True, right=right, left=left, yaw=yaw, pitch=pitch, roll=roll,
+        nose_x=nose_x, nose_y=nose_y,
         tx=tx, ty=ty, tz=tz, face_size=face_w / frame_w, inference_ms=inference_ms, pose_3d=pose_3d,
         blendshapes=bs, landmarks_2d=np.asarray(points, dtype=np.float32)[:, :2], frame_size=(frame_w, frame_h),
     )

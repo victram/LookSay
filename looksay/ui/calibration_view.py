@@ -10,6 +10,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from looksay.calibration.head_model import fit_head_model
 from looksay.calibration.model import MIN_SAMPLES_PER_POINT, CalibrationSession, GazeModel, calibration_targets
 from looksay.i18n.strings import tr
 from looksay.tracking.features import FaceFeatures
@@ -72,7 +73,12 @@ class CalibrationOverlay(QWidget):
     # ------------------------------------------------------------ control
     def start(self, n_points: int, eye: str, mode: str = "full") -> None:
         self.mode = mode
-        self.targets = [(0.5, 0.5)] if mode == "recenter" else calibration_targets(n_points)
+        if mode == "recenter":
+            self.targets = [(0.5, 0.5)]
+        elif mode == "head":  # nose pointing: keep targets reachable with a comfortable head turn
+            self.targets = calibration_targets(9 if n_points >= 9 else 5, margin=0.12)
+        else:
+            self.targets = calibration_targets(n_points)
         self.session = CalibrationSession(self.targets, eye=eye)
         self._recenter_samples = []
         self.index = 0
@@ -98,7 +104,8 @@ class CalibrationOverlay(QWidget):
         self.retry_btn.setText(tr("retry", self.lang))
         self.accept_btn.setText(tr("accept", self.lang))
         if state == "intro":
-            self.message.setText(tr("calib_recenter" if self.mode == "recenter" else "calib_intro", self.lang))
+            key = {"recenter": "calib_recenter", "head": "calib_head_intro"}.get(self.mode, "calib_intro")
+            self.message.setText(tr(key, self.lang))
             self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         elif state in ("settle", "collect"):
             self.message.setText("")
@@ -107,7 +114,14 @@ class CalibrationOverlay(QWidget):
     def feed(self, features: FaceFeatures) -> None:
         if self.state != "collect" or self.session is None:
             return
-        if not features.face_found or features.eyes_closed():
+        if not features.face_found:
+            return
+        if self.mode == "head":
+            vec = features.head_vector()
+            if vec is not None:
+                self.session.add_sample(self.index, vec)
+            return
+        if features.eyes_closed():
             return
         if self.mode == "recenter":
             raw = self._raw_point(features)
@@ -144,7 +158,10 @@ class CalibrationOverlay(QWidget):
         if self.index < len(self.targets):
             self._set_state("settle")
             return
-        self.model = self.session.fit()
+        if self.mode == "head":
+            self.model = fit_head_model(self.targets, self.session.samples)
+        else:
+            self.model = self.session.fit()
         if self.model is None:
             self.message.setText(tr("calib_failed", self.lang))
             self._set_state("failed")

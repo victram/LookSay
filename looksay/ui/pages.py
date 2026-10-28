@@ -185,7 +185,8 @@ class SettingsPage(QWidget):
         self.next_btn.clicked.connect(lambda: self._turn(1))
         self.command_buttons: dict[str, GazeButton] = {}
         bottom = [self.prev_btn, self.next_btn]
-        for name in ("calibrate", "recenter", "diagnostics", "export", "import", "reset_settings", "reset_data"):
+        for name in ("calibrate", "calibrate_head", "recenter", "diagnostics", "export", "import", "reset_settings",
+                     "reset_data"):
             b = GazeButton("", "emergency" if name == "reset_data" else "special")
             b.clicked.connect(lambda _=False, n=name: self.command.emit(n))
             self.command_buttons[name] = b
@@ -227,7 +228,7 @@ class SettingsPage(QWidget):
                 return tr("val_auto", lang)
             names = self._voice_names()
             return names[(value - 1) % len(names)] if names else tr("val_auto", lang)
-        if key in ("speech_rate", "speech_volume", "sensitivity", "key_scale", "confidence_threshold"):
+        if key in ("speech_rate", "speech_volume", "sensitivity", "key_scale", "confidence_threshold", "head_gain"):
             return f"{value:.2f}".rstrip("0").rstrip(".") if isinstance(value, float) else str(value)
         if isinstance(value, str) and f"val_{value}" in _VALUE_KEYS:
             return tr(f"val_{value}", lang)
@@ -267,7 +268,7 @@ class SettingsPage(QWidget):
 
 _VALUE_KEYS = {
     "val_day", "val_night", "val_normal", "val_high", "val_letters", "val_words", "val_qwerty", "val_frequency",
-    "val_both", "val_left", "val_right", "val_all", "val_sentence",
+    "val_both", "val_left", "val_right", "val_all", "val_sentence", "val_eyes_head", "val_eyes", "val_head",
 }
 
 

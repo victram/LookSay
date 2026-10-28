@@ -186,6 +186,7 @@ def render_debug(rgb: np.ndarray, points: np.ndarray | None, f: FaceFeatures, ma
         ec = fp(eye.eye_center)
         tip = (int(ec[0] + (ic[0] - ec[0]) * 6), int(ec[1] + (ic[1] - ec[1]) * 6))
         cv2.arrowedLine(face, ec, tip, C_REFINED, 2, cv2.LINE_AA, tipLength=0.25)
+    cv2.circle(face, fp(px[NOSE_TIP]), 7, (255, 255, 0), 2, cv2.LINE_AA)  # nose pointer
     if matrix is not None:  # head pose axes from the nose
         r = np.asarray(matrix)[:3, :3]
         origin = fp(px[NOSE_TIP])
