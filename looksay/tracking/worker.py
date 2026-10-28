@@ -23,8 +23,8 @@ DEBUG_INTERVAL_S = 1 / 20
 # Iris landmarks are computed from an eye crop of the input frame, so more
 # input pixels means steadier irises; measured cost is flat up to 1280 px.
 INFERENCE_MAX_WIDTH = 1280
-FACE_VIEW_H = 360
-EYE_VIEW = (300, 200)
+FACE_VIEW_H = 540
+EYE_VIEW = (480, 320)
 
 # BGR-free palette (frames are RGB)
 C_MESH = (150, 150, 150)
@@ -119,7 +119,10 @@ class TrackingWorker(QThread):
                     self.preview_ready.emit(self._preview(rgb, points))
                 if self.debug_enabled and frame.timestamp - last_debug >= DEBUG_INTERVAL_S:
                     last_debug = frame.timestamp
-                    self.debug_ready.emit(render_debug(rgb, points, features, det.matrix, det.points, shifts))
+                    try:
+                        self.debug_ready.emit(render_debug(rgb, points, features, det.matrix, det.points, shifts))
+                    except Exception:  # a drawing problem must never stop tracking
+                        log.exception("Debug view rendering failed")
         finally:
             self._capture.stop()
             detector.close()
@@ -150,7 +153,7 @@ def render_debug(rgb: np.ndarray, points: np.ndarray | None, f: FaceFeatures, ma
     import cv2
 
     h, w = rgb.shape[:2]
-    face_w = int(FACE_VIEW_H * 4 / 3)
+    face_w = FACE_VIEW_H  # square: eyes in the upper half, HUD space over the chin
     if points is None or not f.face_found:
         face = cv2.resize(rgb, (face_w, FACE_VIEW_H), interpolation=cv2.INTER_AREA)
         return DebugFrame(_to_qimage(face), _to_qimage(_blank(EYE_VIEW)), _to_qimage(_blank(EYE_VIEW)))
@@ -160,8 +163,9 @@ def render_debug(rgb: np.ndarray, points: np.ndarray | None, f: FaceFeatures, ma
     x0, y0 = px.min(axis=0)
     x1, y1 = px.max(axis=0)
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    half_h = max((y1 - y0), (x1 - x0) * 3 / 4) * 0.65
-    half_w = half_h * 4 / 3
+    half_h = max((y1 - y0), (x1 - x0)) * 0.62
+    half_w = half_h
+    cy += half_h * 0.12  # extra room below the chin for the HUD lines
     fx0, fy0 = int(max(0, cx - half_w)), int(max(0, cy - half_h))
     fx1, fy1 = int(min(w, cx + half_w)), int(min(h, cy + half_h))
     crop = rgb[fy0:fy1, fx0:fx1]

@@ -41,7 +41,7 @@ python -m looksay              # add --mouse to try it without a camera
 A caregiver can also use the mouse: hovering over a key selects it, and
 clicking works too. Press F11 for full screen.
 
-Press **K** on the computer's keyboard to open the tracking debug view: the
+Press **K** on the computer's keyboard to open the full-screen tracking debug view: the
 camera image of the face, a magnified view of each eye with the detected
 iris, and live numbers (confidence, head pose and distance, iris offsets,
 calibration error, FPS). Use it to check the lighting and camera position

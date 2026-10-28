@@ -264,11 +264,11 @@ def test_k_key_toggles_debug_overlay_with_live_info(window, qapp):
     w._on_features(features(0.5, 0.5))
     QTest.keyClick(w, Qt.Key.Key_K)
     assert w.debug_overlay.isVisible()
-    assert w.debug_overlay.geometry() == w.canvas.geometry()  # keyboard stays usable
+    assert w.debug_overlay.geometry() == w.rect()
     w._update_debug_info()
     text = "\n".join(t for t, _ in w.debug_overlay.lines)
     assert "FACE" in text and "IRIS" in text and "GAZE" in text and "DWELL" in text
-    # The overlay must not block selection: keys below still work by gaze.
+    # The overlay ignores input: keys below still work by gaze.
     look_at(w, qapp, key(w, "a"))
     assert w.buffer.text == "A"
     QTest.keyClick(w, Qt.Key.Key_K)

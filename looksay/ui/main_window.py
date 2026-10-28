@@ -169,8 +169,9 @@ class MainWindow(QWidget):
 
     # ================================================================ debug
     def _place_debug_overlay(self) -> None:
-        # Over the message canvas, so the keyboard stays usable while debugging.
-        self.debug_overlay.setGeometry(self.canvas.geometry())
+        # Full window, so the camera views are big enough to judge the tracking.
+        # It ignores input; the gaze cursor stays visible on top of it.
+        self.debug_overlay.setGeometry(self.rect())
 
     def _update_debug_info(self) -> None:
         f, g, est = self.last_features, self.gaze_sample, self.estimator
@@ -205,6 +206,7 @@ class MainWindow(QWidget):
                 bs = f.blendshapes
                 shift = self.debug_overlay.frame.shifts.get(name) if self.debug_overlay.frame else None
                 eye_lines[name] = [
+                    f"h {e.h:+.3f}   v {e.v:+.3f}   open {e.openness:.2f}",
                     f"iris r {e.iris_radius:.1f}px  eye {e.width:.0f}px",
                     f"in {bs.get('eyeLookIn' + side, 0):.2f} out {bs.get('eyeLookOut' + side, 0):.2f} "
                     f"up {bs.get('eyeLookUp' + side, 0):.2f} dn {bs.get('eyeLookDown' + side, 0):.2f}",
