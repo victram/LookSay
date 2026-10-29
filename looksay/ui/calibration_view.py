@@ -8,7 +8,7 @@ from typing import Callable
 import numpy as np
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from looksay.calibration.head_model import fit_head_model
 from looksay.calibration.model import (MIN_SAMPLES_PER_POINT, PURSUIT_WEIGHT, CalibrationSession, GazeModel,
@@ -54,27 +54,39 @@ class CalibrationOverlay(QWidget):
         self.pursuit_lag = 0.0
         self.model: GazeModel | None = None
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(80, 80, 80, 80)
-        self.message = QLabel("")
+        # Positioned by hand (_layout): on the result screen the text and the
+        # buttons sit in the gaps between rows of calibration points, so the
+        # point map stays fully visible.
+        self.message = QLabel("", self)
         self.message.setObjectName("Message")
         self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.message.setWordWrap(True)
-        root.addWidget(self.message, 1)
-        self.buttons = QWidget()
+        self.buttons = QWidget(self)
         row = QHBoxLayout(self.buttons)
         row.setSpacing(40)
         self.cancel_btn = GazeButton("", "special")
         self.retry_btn = GazeButton("", "special")
         self.accept_btn = GazeButton("", "special")
+        row.setContentsMargins(0, 0, 0, 0)
         for b in (self.cancel_btn, self.retry_btn, self.accept_btn):
-            b.setMinimumHeight(140)
             row.addWidget(b)
         self.cancel_btn.clicked.connect(self._cancel)
         self.retry_btn.clicked.connect(self._retry)
         self.accept_btn.clicked.connect(self._accept)
-        root.addWidget(self.buttons, 1)
         self.hide()
+
+    def _layout(self) -> None:
+        w, h = self.width(), self.height()
+        if self.state in ("done", "failed"):
+            # Calibration rows are at 8%, 29%, 50%, 71% and 92% of the height.
+            self.message.setGeometry(40, int(h * 0.11), w - 80, int(h * 0.16))
+            self.buttons.setGeometry(int(w * 0.18), int(h * 0.535), int(w * 0.64), int(h * 0.14))
+        else:
+            self.message.setGeometry(80, int(h * 0.3), w - 160, int(h * 0.4))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._layout()
 
     # ------------------------------------------------------------ control
     def start(self, n_points: int, eye: str, mode: str = "full") -> None:
@@ -118,6 +130,7 @@ class CalibrationOverlay(QWidget):
             self.message.setText(tr("calib_pursuit_intro", self.lang))
         elif state in ("settle", "collect", "pursuit"):
             self.message.setText("")
+        self._layout()
         self.update()
 
     def feed(self, features: FaceFeatures) -> None:

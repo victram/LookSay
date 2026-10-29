@@ -5,6 +5,18 @@ severe motor impairments, including tetraplegia. You look at keys to write a
 message and LookSay speaks it aloud. It only needs a standard webcam. After
 setup, no mouse, keyboard, account or internet connection is required.
 
+## Screenshots
+
+<p align="center"><img src="docs/screenshots/main.png" alt="Main screen: message, word suggestions and the eye-operated keyboard; the key being looked at fills a progress bar" width="820"></p>
+
+| | |
+|:---:|:---:|
+| <img src="docs/screenshots/main-night.png" alt="Night theme" width="400"><br>**Night theme** | <img src="docs/screenshots/words.png" alt="Word keyboard" width="400"><br>**Word keyboard** (whole-word predictions) |
+| <img src="docs/screenshots/phrases.png" alt="Quick phrases, emergency phrases in red" width="400"><br>**Quick phrases** (emergency phrases in red) | <img src="docs/screenshots/settings.png" alt="Gaze-operable settings" width="400"><br>**Settings**, all operable by gaze |
+| <img src="docs/screenshots/calibration.png" alt="Calibration result with validated error and point map" width="400"><br>**Calibration result**: validated error and where each point was estimated (example data) | |
+
+The screenshots are rendered from the real app with `python tools/screenshots.py`.
+
 ## Features
 
 - Letter keyboard and word/phrase keyboard, with 3–6 large word predictions.
