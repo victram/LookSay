@@ -5,6 +5,11 @@ severe motor impairments, including tetraplegia. You look at keys to write a
 message and LookSay speaks it aloud. It only needs a standard webcam. After
 setup, no mouse, keyboard, account or internet connection is required.
 
+> **Non-commercial use only.** LookSay includes the
+> [GazeFollower](https://github.com/GanchengZhu/GazeFollower) gaze model, which
+> is licensed CC BY-NC-SA 4.0. You may use and share LookSay for free, but it
+> **cannot be sold or used commercially**. See [NOTICE.md](NOTICE.md).
+
 ## Screenshot
 
 <p align="center"><img src="docs/screenshots/main.png" alt="Main screen: message, word suggestions and the eye-operated keyboard; the key being looked at fills a progress bar" width="820"></p>

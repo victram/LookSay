@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "looksay"
-version = "0.8.0"
+version = "0.8.1"
 description = "Offline, eye-controlled communication for people with severe motor impairments."
 readme = "README.md"
 license = { text = "MIT" }

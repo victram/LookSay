@@ -1,7 +1,7 @@
 ; Inno Setup script for a Windows installer (run after PyInstaller).
 ;   iscc packaging\installer.iss   (optionally /DAppVersion=1.2.3)
 #ifndef AppVersion
-  #define AppVersion "0.8.0"
+  #define AppVersion "0.8.1"
 #endif
 
 [Setup]
@@ -16,6 +16,8 @@ SetupIconFile=..\assets\logo.ico
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
+; Shown before installing: the bundled gaze model is non-commercial (CC BY-NC-SA 4.0).
+LicenseFile=LICENSE-installer.txt
 
 [Files]
 Source: "..\dist\LookSay\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion

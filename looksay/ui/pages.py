@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from looksay import __version__
 from looksay.config import SETTING_GROUPS, SETTING_SPECS
 from looksay.i18n.strings import LANGUAGE_NAMES, tr
 from looksay.ui.widgets import GazeButton
@@ -326,6 +327,10 @@ class DiagnosticsPage(QWidget):
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumSize(320, 240)
         left.addWidget(self.preview, 4)
+        self.notice = QLabel("")
+        self.notice.setObjectName("Status")
+        self.notice.setWordWrap(True)
+        left.addWidget(self.notice, 0)
         root.addLayout(left, 2)
         grid = QGridLayout()
         self.labels: dict[str, tuple[QLabel, QLabel]] = {}
@@ -354,6 +359,7 @@ class DiagnosticsPage(QWidget):
         self.back_btn.setText(tr("back", self.lang))
         for key, (name, _) in self.labels.items():
             name.setText(tr(key, self.lang))
+        self.notice.setText(tr("noncommercial_notice", self.lang, version=__version__))
 
 
 # ---------------------------------------------------------------- confirmation

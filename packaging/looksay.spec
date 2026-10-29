@@ -9,6 +9,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 root = Path(SPECPATH).parent
 datas = [(str(root / "looksay" / "resources"), "looksay/resources")]
+# License texts travel with the app (the bundled gaze model is non-commercial).
+datas += [(str(root / name), ".") for name in ("LICENSE", "NOTICE.md", "packaging/LICENSE-installer.txt")]
 datas += collect_data_files("mediapipe", includes=["**/*.so", "**/*.dll", "**/*.dylib", "**/*.binarypb", "**/*.tflite"])
 binaries = collect_dynamic_libs("mediapipe") + collect_dynamic_libs("MNN")
 # Gaze CNN runtime (only the inference parts; MNN's LLM/tools modules are not needed).

@@ -1,0 +1,17 @@
+LookSay - NON-COMMERCIAL USE ONLY / SOLO USO NO COMERCIAL
+
+EN: This build of LookSay includes the GazeFollower gaze-estimation model
+(MGazeNet, by Gancheng Zhu et al.), licensed under Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0):
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+You may use and share this build free of charge, but you may NOT sell it or
+use it for commercial purposes.
+
+ES: Esta versión de LookSay incluye el modelo de estimación de la mirada
+GazeFollower (MGazeNet, de Gancheng Zhu et al.), con licencia Creative
+Commons Reconocimiento-NoComercial-CompartirIgual 4.0 (CC BY-NC-SA 4.0).
+Puedes usarla y compartirla gratis, pero NO puedes venderla ni usarla con
+fines comerciales.
+
+LookSay's own code is MIT licensed (see LICENSE). Other bundled components
+are listed in NOTICE.md.

@@ -193,6 +193,11 @@ STRINGS: dict[str, tuple[str, str, str]] = {
     "cancel": ("Cancel", "Cancelar", "Cancel·la"),
     # Diagnostics
     "diag_title": ("Diagnostics", "Diagnóstico", "Diagnòstic"),
+    "noncommercial_notice": (
+        "LookSay {version} · Non-commercial use only: includes the GazeFollower gaze model (CC BY-NC-SA 4.0).",
+        "LookSay {version} · Solo uso no comercial: incluye el modelo de mirada GazeFollower (CC BY-NC-SA 4.0).",
+        "LookSay {version} · Només ús no comercial: inclou el model de mirada GazeFollower (CC BY-NC-SA 4.0).",
+    ),
     "diag_face": ("Face", "Cara", "Cara"),
     "diag_iris": ("Iris landmarks", "Marcas del iris", "Marques de l'iris"),
     "diag_detected": ("detected", "detectada", "detectada"),
