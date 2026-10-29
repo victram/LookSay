@@ -15,8 +15,10 @@ The screenshot is rendered from the real app with `python tools/screenshots.py`.
 
 - Letter keyboard and word/phrase keyboard, with 3–6 large word predictions.
   Predictions run on the device and learn your vocabulary.
-- Webcam eye tracking (MediaPipe face and iris landmarks), 5- or 9-point
-  calibration, drift recentering, dwell selection with a visible progress bar,
+- Webcam eye tracking: MediaPipe face and iris landmarks plus the
+  [GazeFollower](https://github.com/GanchengZhu/GazeFollower) gaze CNN, a deep
+  network trained on many people's eyes. 5-, 9- or 13-point calibration with a
+  smooth-pursuit phase, drift recentering, dwell selection with a visible progress bar,
   and optional blink-to-select.
 - Selection pauses automatically when your face is lost or tracking
   confidence is low.
@@ -91,5 +93,7 @@ Further documentation:
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Bundled third-party data (the MediaPipe model
-and the FrequencyWords dictionaries) is listed in [NOTICE.md](NOTICE.md).
+LookSay's code is MIT, see [LICENSE](LICENSE). The bundled gaze CNN from
+GazeFollower is CC BY-NC-SA 4.0, so builds that include it are for
+**non-commercial use only**. All bundled third-party data is listed in
+[NOTICE.md](NOTICE.md).

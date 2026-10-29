@@ -70,6 +70,18 @@ flowchart LR
   the user. It is more honest than the training error. The result screen
   draws each target and where the model placed the gaze. 5, 9 and 13 points
   are available.
+- **Gaze CNN (preferred appearance features).** `tracking/cnn_gaze.py` runs
+  GazeFollower's MGazeNet (7M parameters, MNN runtime, CPU, about 25 ms per frame on a cloud test machine) on a
+  224×224 face crop, two 112×112 eye crops and their positions. Crops are
+  made like GazeFollower's own MediaPipe alignment (frame resized to
+  640×480, eye boxes from the eye corners), so the network sees input like
+  its training data. Its 258 outputs (rough gaze estimate + 256 learned
+  features) replace the eye patches below. The model standardises them per
+  column, reduces them with PCA, and cross-validation picks 0–32
+  components. GazeFollower reports about 1.1 cm accuracy after calibration
+  with this design, which is better than landmark geometry alone because the
+  network learned eye appearance from many people. If MNN or the model is
+  missing, LookSay falls back to the eye patches.
 - **Eye-image (appearance) features.** Each frame, both eyes are cut out
   along their corner axis, resized to 24×12 and contrast-normalised. Head
   roll, distance and lighting level do not change the patch. In the model,

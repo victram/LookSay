@@ -25,6 +25,7 @@ from looksay.speech.tts import NullSpeech, SpeechEngine
 from looksay.storage.database import Database
 from looksay.storage.settings import Settings
 from looksay.tracking.blink import BlinkDetector
+from looksay.tracking.cnn_gaze import CNN_FEATURES
 from looksay.tracking.features import FaceFeatures
 from looksay.tracking.gaze import GazeEstimator, GazeSample
 from looksay.tracking.smoothing import CursorAnimator
@@ -260,8 +261,8 @@ class MainWindow(QWidget):
             pct = 100 * err / float(np.hypot(self.width(), self.height()))
             lines.append((f"CALIB   {len(m.point_results)} pts  error {err:.0f} px ({pct:.1f}%)"
                           f"  {'eyes' if m is est.model else 'nose'}"
-                          + (f" + eye images ({len(m.pca_comp)} comp.)" if getattr(m, "pca_comp", None) is not None
-                             else "")
+                          + ((f" + {'gaze CNN' if len(m.pca_mean) == CNN_FEATURES else 'eye images'}"
+                              f" ({len(m.pca_comp)} comp.)") if getattr(m, "pca_comp", None) is not None else "")
                           + (f"  learned {self._confirmed_samples}" if m is est.model else ""),
                           OK if pct < 4 else (WARN if pct < 8 else BAD)))
         else:
@@ -277,7 +278,8 @@ class MainWindow(QWidget):
                           FG if stats.camera_ok else BAD))
             lines.append((f"CPU     dropped {stats.frames_dropped}/{stats.frames_captured}"
                           f" ({stats.drop_ratio * 100:.1f}%)  UI {self.ui_fps.rate:4.1f} fps"
-                          f"  iris refine {'on' if self.settings['iris_refinement'] else 'off'}", DIM))
+                          f"  iris refine {'on' if self.settings['iris_refinement'] else 'off'}"
+                          f"  gaze CNN {f'{f.cnn_ms:.0f} ms' if f is not None and f.cnn is not None else 'off'}", DIM))
         self.debug_overlay.set_info(lines, eye_lines, message)
 
     def toggle_debug(self) -> None:

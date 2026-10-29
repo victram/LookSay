@@ -5,13 +5,15 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 root = Path(SPECPATH).parent
 datas = [(str(root / "looksay" / "resources"), "looksay/resources")]
 datas += collect_data_files("mediapipe", includes=["**/*.so", "**/*.dll", "**/*.dylib", "**/*.binarypb", "**/*.tflite"])
-binaries = collect_dynamic_libs("mediapipe")
-hidden = ["pyttsx3.drivers", "pyttsx3.drivers.sapi5", "pyttsx3.drivers.espeak", "pyttsx3.drivers.nsss"]
+binaries = collect_dynamic_libs("mediapipe") + collect_dynamic_libs("MNN")
+# Gaze CNN runtime (only the inference parts; MNN's LLM/tools modules are not needed).
+hidden = collect_submodules("MNN", filter=lambda n: not n.startswith(("MNN.llm", "MNN.tools", "MNN.audio")))
+hidden += ["pyttsx3.drivers", "pyttsx3.drivers.sapi5", "pyttsx3.drivers.espeak", "pyttsx3.drivers.nsss"]
 
 a = Analysis(
     [str(root / "looksay" / "__main__.py")],

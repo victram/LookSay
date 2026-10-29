@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "looksay"
-version = "0.7.0"
+version = "0.8.0"
 description = "Offline, eye-controlled communication for people with severe motor impairments."
 readme = "README.md"
 license = { text = "MIT" }
@@ -13,6 +13,7 @@ dependencies = [
     "PySide6-Essentials>=6.6",
     "PySide6-Addons>=6.6",
     "mediapipe>=0.10.14",
+    "MNN>=3.6",
     "numpy>=1.26",
     "pyttsx3>=2.90",
 ]

@@ -7,9 +7,11 @@ calibration points. The ridge strength is chosen by leave-one-point-out
 cross-validation, and that cross-validated error (not the optimistic
 training error) is what we report as the calibration accuracy.
 
-When eye-image patches are present (columns after the 13 geometric
-features), they are reduced with PCA, fitted on the calibration data, and
-the leading components join the regression as appearance features.
+Appearance features follow the 13 geometric ones: the 258 outputs of the
+gaze CNN when it is available (cnn_gaze.py), else raw eye-image patches.
+They are standardised per column, reduced with PCA fitted on the
+calibration data, and cross-validation decides how many components join
+the regression.
 
 Outputs are in the 0..1 space of the calibrated window, so resizing the
 window does not invalidate the calibration.
@@ -25,7 +27,7 @@ import numpy as np
 
 from looksay.tracking.features import FEATURE_NAMES
 
-MODEL_VERSION = 3  # v3: corner-referenced iris offsets + appearance (eye image) features
+MODEL_VERSION = 4  # v4: gaze-CNN appearance features, per-column scaling before PCA
 MIN_SAMPLES_PER_POINT = 5
 RIDGE_GRID = (0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0)
 # Extra samples (smooth pursuit, confirmed selections) within this distance of
@@ -38,17 +40,21 @@ MAX_EXTRA_SAMPLES = 1500
 # feature that barely moved during calibration cannot dominate the model.
 STD_FLOOR = np.array([0.004, 0.004, 0.004, 0.004, 0.004, 0.02, 0.02, 1.0, 1.0, 1.0, 0.5, 0.5, 1.0])
 N_FEATURES = len(FEATURE_NAMES)
-N_PCA = 16  # appearance components kept from the eye patches
+N_PCA = 32  # most appearance components cross-validation may keep
 PCA_STD_FLOOR = 0.05
 
 
-def _project(x: np.ndarray, pca_mean: np.ndarray | None, pca_comp: np.ndarray | None) -> np.ndarray:
-    """Geometric features + PCA-reduced eye patches (patch mean used if a frame has none)."""
+def _project(x: np.ndarray, pca_mean: np.ndarray | None, pca_comp: np.ndarray | None,
+             pca_scale: np.ndarray | None = None) -> np.ndarray:
+    """Geometric features + PCA-reduced appearance (the mean is used when a frame has none or another kind)."""
     geo = x[:, :N_FEATURES]
     if pca_mean is None or pca_comp is None:
         return geo
-    patches = x[:, N_FEATURES:] if x.shape[1] > N_FEATURES else np.tile(pca_mean, (len(x), 1))
-    return np.hstack([geo, (patches - pca_mean) @ pca_comp.T])
+    app = x[:, N_FEATURES:] if x.shape[1] - N_FEATURES == len(pca_mean) else np.tile(pca_mean, (len(x), 1))
+    centred = app - pca_mean
+    if pca_scale is not None:
+        centred = centred / pca_scale
+    return np.hstack([geo, centred @ pca_comp.T])
 
 
 def calibration_targets(n_points: int, margin: float = 0.08) -> list[tuple[float, float]]:
@@ -129,7 +135,8 @@ class GazeModel:
     # (target_x, target_y, predicted_x, predicted_y) per calibration point (cross-validated)
     point_results: list[tuple[float, float, float, float]] = field(default_factory=list)
     pca_mean: np.ndarray | None = None
-    pca_comp: np.ndarray | None = None  # (k, patch_size)
+    pca_comp: np.ndarray | None = None  # (k, appearance size)
+    pca_scale: np.ndarray | None = None  # per-column std of the appearance features
     version: int = MODEL_VERSION
 
     @property
@@ -138,7 +145,7 @@ class GazeModel:
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         x = np.atleast_2d(np.asarray(x, dtype=np.float64))
-        z = (_project(x, self.pca_mean, self.pca_comp) - self.mean) / self.std
+        z = (_project(x, self.pca_mean, self.pca_comp, self.pca_scale) - self.mean) / self.std
         return _design(z, self.quadratic) @ self.coef
 
     def error_px(self, width: float, height: float) -> float:
@@ -155,6 +162,7 @@ class GazeModel:
             "fit_error": self.fit_error, "ridge": self.ridge, "point_results": self.point_results,
             "pca_mean": None if self.pca_mean is None else self.pca_mean.tolist(),
             "pca_comp": None if self.pca_comp is None else self.pca_comp.tolist(),
+            "pca_scale": None if self.pca_scale is None else self.pca_scale.tolist(),
         }
 
     @classmethod
@@ -168,6 +176,7 @@ class GazeModel:
             point_results=[tuple(p) for p in data.get("point_results", [])],
             pca_mean=None if data.get("pca_mean") is None else np.array(data["pca_mean"]),
             pca_comp=None if data.get("pca_comp") is None else np.array(data["pca_comp"]),
+            pca_scale=None if data.get("pca_scale") is None else np.array(data["pca_scale"]),
         )
 
 
@@ -236,10 +245,22 @@ class CalibrationSession:
         return arr[keep] if keep.sum() >= MIN_SAMPLES_PER_POINT else arr
 
     def fit(self) -> GazeModel | None:
+        # Frames whose appearance part is missing or of another kind (CNN vs patches) keep only
+        # their geometric features; their appearance columns become NaN and are filled below.
+        widths = [len(v) for s in self.samples.values() for v in s] + [len(v) for v, _, _ in self.extra]
+        if not widths:
+            return None
+        width = max(set(widths), key=widths.count)
+
+        def conform(v: np.ndarray) -> np.ndarray:
+            if len(v) == width:
+                return v
+            return np.concatenate([v[:N_FEATURES], np.full(width - N_FEATURES, np.nan)])
+
         points = []
         for idx, samples in sorted(self.samples.items()):
             if len(samples) >= MIN_SAMPLES_PER_POINT:
-                points.append((idx, self._inliers(samples)))
+                points.append((idx, self._inliers([conform(v) for v in samples])))
         if len(points) < 4:
             return None
         xs = [p for _, p in points]
@@ -247,34 +268,33 @@ class CalibrationSession:
         groups = [np.full(len(p), i) for i, p in points]
         weights = [np.ones(len(p)) for _, p in points]
         if self.extra:
-            xs.append(np.array([v for v, _, _ in self.extra]))
+            xs.append(np.array([conform(v) for v, _, _ in self.extra]))
             ys.append(np.array([t for _, t, _ in self.extra]))
             groups.append(np.full(len(self.extra), -1))
             weights.append(np.array([w for _, _, w in self.extra]))
-        width = max(r.shape[1] for r in xs)
-        if any(r.shape[1] != width for r in xs):  # a few frames without eye patches
-            xs = [r if r.shape[1] == width else np.hstack([r, np.full((len(r), width - r.shape[1]), np.nan)])
-                  for r in xs]
         x, y = np.vstack(xs), np.vstack(ys)
         groups, w = np.concatenate(groups), np.concatenate(weights)
-        pca_mean = pca_full = None
+        pca_mean = pca_full = pca_scale = None
         if x.shape[1] > N_FEATURES:
-            patches = x[:, N_FEATURES:]
-            col_mean = np.nanmean(patches, axis=0)
-            patches = np.where(np.isnan(patches), col_mean, patches)
-            pca_mean = patches.mean(axis=0)
-            _, _, vt = np.linalg.svd(patches - pca_mean, full_matrices=False)
-            pca_full = vt[: min(N_PCA, len(patches) - 1)]
-            x = np.hstack([x[:, :N_FEATURES], patches])
+            app = x[:, N_FEATURES:]
+            col_mean = np.nanmean(app, axis=0)
+            col_mean = np.where(np.isnan(col_mean), 0.0, col_mean)
+            app = np.where(np.isnan(app), col_mean, app)
+            pca_mean = app.mean(axis=0)
+            # Standardise columns first, so a few large-valued outputs cannot dominate the PCA.
+            pca_scale = np.maximum(app.std(axis=0), 1e-3 * (app.std(axis=0).max() + 1e-12))
+            _, _, vt = np.linalg.svd((app - pca_mean) / pca_scale, full_matrices=False)
+            pca_full = vt[: min(N_PCA, len(app) - 1)]
+            x = np.hstack([x[:, :N_FEATURES], app])
         n_distinct = len(points) + (len(self.extra) // 10)
         # Candidate amounts of appearance information; cross-validation decides.
-        ks = [0] if pca_full is None else sorted({0, *(k for k in (4, 8, N_PCA) if k <= len(pca_full)
+        ks = [0] if pca_full is None else sorted({0, *(k for k in (4, 8, 16, N_PCA) if k <= len(pca_full)
                                                         and k <= max(4, n_distinct // 2))})
 
         best = None
         for k in ks:
             comp = pca_full[:k] if k else None
-            feats = _project(x, pca_mean if k else None, comp)
+            feats = _project(x, pca_mean if k else None, comp, pca_scale)
             mean = feats.mean(axis=0)
             floor = np.concatenate([STD_FLOOR, np.full(feats.shape[1] - N_FEATURES, PCA_STD_FLOOR)])
             std = np.maximum(feats.std(axis=0), floor[: feats.shape[1]])
@@ -297,6 +317,7 @@ class CalibrationSession:
         coef = _solve(_design(z, quadratic), y, ridge, w)
         pca_comp = pca_full[:k] if k else None
         if not k:
-            pca_mean = None
+            pca_mean = pca_scale = None
         return GazeModel(mean=mean, std=std, coef=coef, quadratic=quadratic, eye=self.eye,
-                         fit_error=err, ridge=ridge, point_results=results, pca_mean=pca_mean, pca_comp=pca_comp)
+                         fit_error=err, ridge=ridge, point_results=results, pca_mean=pca_mean, pca_comp=pca_comp,
+                         pca_scale=pca_scale)

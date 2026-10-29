@@ -68,6 +68,8 @@ class TrackingWorker(QThread):
         self.landmarks_overlay = False
         self.debug_enabled = False
         self.iris_refinement = False
+        self.cnn_enabled = True
+        self.cnn_loaded = False
         self._running = True
         self._capture: CaptureThread | None = None
 
@@ -85,7 +87,10 @@ class TrackingWorker(QThread):
             log.warning("Tracking unavailable: %s", exc)
             self.unavailable.emit(str(exc))
             return
-        log.info("Landmark model loaded; opening camera %s", self.camera_index)
+        from looksay.tracking.cnn_gaze import load_cnn
+        cnn = load_cnn()
+        self.cnn_loaded = cnn is not None
+        log.info("Landmark model loaded (gaze CNN: %s); opening camera %s", self.cnn_loaded, self.camera_index)
         slot = LatestFrameSlot(self.stats)
         self._capture = CaptureThread(slot, self.stats, self.camera_index, self.resolution, self.fps)
         self._capture.start()
@@ -108,15 +113,18 @@ class TrackingWorker(QThread):
                 det = detector.detect(rgb, frame.timestamp)
                 self.stats.record_inference(det.inference_ms)
                 self.stats.process_fps.tick()
-                points, shifts, patches = det.points, {}, None
+                points, shifts, patches, deep = det.points, {}, None, None
                 if points is not None:
                     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                     if self.iris_refinement:
                         from looksay.tracking.iris_refine import refine_iris
                         points, shifts = refine_iris(gray, points)
                     patches = eye_patches(gray, points)
+                    if cnn is not None and self.cnn_enabled:
+                        deep = cnn.features(rgb, det.points)
                 features = compute_features(points, w, h, frame.timestamp, det.inference_ms,
-                                            det.blendshapes, det.matrix, patches)
+                                            det.blendshapes, det.matrix, patches, deep,
+                                            cnn.last_ms if deep is not None else 0.0)
                 self.features_ready.emit(features)
                 if self.preview_enabled and frame.timestamp - last_preview >= PREVIEW_INTERVAL_S:
                     last_preview = frame.timestamp

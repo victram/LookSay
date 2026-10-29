@@ -445,3 +445,59 @@ def test_real_face_eye_patches():
     assert patches is not None and patches.shape == (2, 12, 24)
     f = compute_features(d.points, img.shape[1], img.shape[0], 0.0, 0.0, d.blendshapes, d.matrix, patches)
     assert f.vector().shape == (13 + 2 * 12 * 24,)
+
+
+def test_gaze_cnn_on_real_face():
+    """The bundled gaze CNN gives 258 finite outputs on a real portrait, from sane crops."""
+    cv2 = pytest.importorskip("cv2")
+    mpl = pytest.importorskip("matplotlib")
+    pytest.importorskip("MNN")
+    from pathlib import Path
+
+    from looksay.tracking.cnn_gaze import CNN_FEATURES, CnnGaze, crop_rects
+    from looksay.tracking.landmarks import LandmarkDetector, TrackerUnavailable
+
+    path = Path(mpl.get_data_path()) / "sample_data" / "grace_hopper.jpg"
+    if not path.exists():
+        pytest.skip("sample image not available")
+    try:
+        det = LandmarkDetector()
+    except TrackerUnavailable as exc:
+        pytest.skip(str(exc))
+    rgb = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    points = det.detect(rgb, 0.0).points
+    det.close()
+    face, left, right = crop_rects(points[:, :2].astype(float) * (640, 480), 640, 480)
+    assert face[2] > 100 and face[3] > 100
+    assert left[0] + left[2] < right[0] + right[2] and left[2] > 10 and right[2] > 10
+    assert left[1] > face[1] and right[1] > face[1]
+    cnn = CnnGaze()
+    out = cnn.features(rgb, points)
+    assert out is not None and out.shape == (CNN_FEATURES,) and np.all(np.isfinite(out))
+    assert np.allclose(cnn.features(rgb, points), out, atol=1e-3)  # deterministic
+    f = compute_features(points, rgb.shape[1], rgb.shape[0], 0.0, cnn=out)
+    assert f.vector().shape == (13 + CNN_FEATURES,)
+
+
+def test_cnn_features_mixed_with_other_frames():
+    """CNN-width frames dominate; a few frames with patches or nothing extra must not break the fit."""
+    rng = np.random.default_rng(3)
+    targets = calibration_targets(9)
+    session = CalibrationSession(targets)
+    basis = rng.normal(size=(2, 258))
+    for i, (tx, ty) in enumerate(targets):
+        for j in range(20):
+            geo = _vector(tx, ty, rng, noise=0.03)
+            deep = np.array([tx - 0.5, ty - 0.5]) @ basis + rng.normal(scale=0.05, size=258)
+            if j == 0:
+                session.add_sample(i, geo)  # CNN missing on this frame
+            elif j == 1:
+                session.add_sample(i, np.concatenate([geo, rng.random(576)]))  # patches instead
+            else:
+                session.add_sample(i, np.concatenate([geo, deep]))
+    model = session.fit()
+    assert model is not None and model.uses_appearance and len(model.pca_mean) == 258
+    assert model.predict(np.concatenate([_vector(0.5, 0.5, rng, noise=0), rng.random(576)])).shape == (1, 2)
+    clone = GazeModel.from_dict(model.to_dict())
+    x = np.concatenate([_vector(0.2, 0.8, rng, noise=0), np.array([-0.3, 0.3]) @ basis])
+    assert np.allclose(clone.predict(x), model.predict(x))
