@@ -130,9 +130,12 @@ class PhrasesPage(QWidget):
 
 
 # -------------------------------------------------------------------- settings
+KEYBOARD_TOOLS = ("shift", "symbols", "delete_word", "undo", "mode", "clear")
+
+
 class SettingsPage(QWidget):
     back = Signal()
-    command = Signal(str)  # calibrate, recenter, diagnostics, export, import, reset_settings, reset_data
+    command = Signal(str)  # key:<tool>, calibrate, recenter, diagnostics, export, import, reset_settings, reset_data
 
     def __init__(self, get_value: Callable[[str], Any], step_value: Callable[[str, int], None],
                  voice_names: Callable[[], list[str]], parent=None):
@@ -142,6 +145,7 @@ class SettingsPage(QWidget):
         self._step = step_value
         self._voice_names = voice_names
         self.lang = "en"
+        self._symbols, self._mode = False, "letters"
         self.group = SETTING_GROUPS[0]
         self.page = 0
 
@@ -183,6 +187,16 @@ class SettingsPage(QWidget):
         self.next_btn = GazeButton("", "small")
         self.prev_btn.clicked.connect(lambda: self._turn(-1))
         self.next_btn.clicked.connect(lambda: self._turn(1))
+        # Typing tools that are not on the main screen; each one returns to the keyboard.
+        self.tool_buttons: dict[str, GazeButton] = {}
+        for name in KEYBOARD_TOOLS:
+            b = GazeButton("", "small")
+            b.clicked.connect(lambda _=False, n=name: self.command.emit("key:" + n))
+            self.tool_buttons[name] = b
+        tools = QWidget()
+        tools.setLayout(_hbox(*self.tool_buttons.values()))
+        root.addWidget(tools, 1)
+
         self.command_buttons: dict[str, GazeButton] = {}
         rows = [[self.prev_btn, self.next_btn], []]
         for i, name in enumerate(("calibrate", "calibrate_head", "recenter", "diagnostics", "export", "import",
@@ -264,7 +278,22 @@ class SettingsPage(QWidget):
         self.next_btn.setText(tr("next_page", lang))
         for name, b in self.command_buttons.items():
             b.setText(tr(name, lang))
+        self.set_tool_state(self._symbols, self._mode)
         self.refresh()
+
+    def set_tool_state(self, symbols: bool, mode: str) -> None:
+        self._symbols, self._mode = symbols, mode
+        lang = self.lang
+        labels = {
+            "shift": tr("shift", lang),
+            "symbols": "abc" if symbols else ("123 " + ("àé" if lang != "en" else "?!")),
+            "delete_word": tr("delete_word", lang),
+            "undo": tr("undo", lang),
+            "mode": tr("mode_words" if mode == "letters" else "mode_letters", lang),
+            "clear": tr("clear", lang),
+        }
+        for name, b in self.tool_buttons.items():
+            b.setText(labels[name])
 
 
 _VALUE_KEYS = {

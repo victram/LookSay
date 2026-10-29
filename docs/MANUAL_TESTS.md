@@ -10,9 +10,9 @@ screen, and the results (time, errors, comments).
 | 1 | First calibration | Fresh start → Settings ▸ Calibrate (9 points) → follow the dots → Accept by gaze | Finishes in under 30 s; the reported error is shown; the user can select "Accept" by gaze |
 | 2 | 5-point calibration | Settings ▸ Eye tracking ▸ Calibration points = 5 → Calibrate | Works; the gaze cursor follows the gaze over all 4 quadrants |
 | 3 | Typing | Type "I need water" with letters and suggestions only | No physical input; ≤ 2 wrong selections; record the time |
-| 4 | Corrections | Make a typo → ⌫, Del word, Undo | Each control does exactly one step |
+| 4 | Corrections | Make a typo → Delete; Settings → Delete word, Undo | Each control does exactly one step |
 | 5 | Word mode | Switch to Words, compose "I want to sleep" | Words insert with correct spacing and capitals |
-| 6 | Speech | Speak, Stop mid-sentence; Speak mode = Last sentence | Audio starts and stops; only the last sentence is read |
+| 6 | Speech | Speak, then Speak again (it reads Stop) mid-sentence; Speak mode = Last sentence | Audio starts and stops; only the last sentence is read |
 | 7 | Emergency | Select HELP from the keyboard and the first phrase on the phrases page | The emergency phrase is spoken at full volume within the dwell time; nothing is contacted automatically |
 | 8 | Face loss | Turn away or cover the camera while dwelling on a key | The status shows "Face not found"; no selection happens; tracking resumes when the face returns |
 | 9 | Poor lighting | Dim light / strong backlight | Confidence drops and selection pauses rather than selecting wrong keys |

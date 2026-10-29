@@ -62,33 +62,22 @@ class KeyboardPanel(QWidget):
         self.stack.addWidget(self.words_page)
         root.addWidget(self.stack, 3)
 
-        self.shift_btn = self._button("", "special", "shift")
-        self.symbols_btn = self._button("", "special", "symbols")
+        # One control row, as in the "Papel" design: space, delete, phrases, settings, Speak, HELP.
+        # Speak turns into Stop while the voice is talking. The rarer editing tools (shift, symbols,
+        # delete word, undo, word mode, clear) live in Settings, so the main screen stays calm.
         self.space_btn = self._button("", "special", "space")
         self.backspace_btn = self._button("", "special", "backspace")
-        self.delete_word_btn = self._button("", "special", "delete_word")
-        self.undo_btn = self._button("", "special", "undo")
-        edit_row = QWidget()
-        edit_row.setLayout(_row(
-            [self.shift_btn, self.symbols_btn, self.space_btn, self.backspace_btn, self.delete_word_btn, self.undo_btn],
-            [2, 2, 5, 2, 3, 2],
-        ))
-        root.addWidget(edit_row, 1)
-
-        self.mode_btn = self._button("", "special", "mode")
         self.phrases_btn = self._button("", "special", "phrases")
-        self.speak_btn = self._button("", "primary", "speak")
-        self.stop_btn = self._button("", "special", "stop")
-        self.clear_btn = self._button("", "special", "clear")
-        self.language_btn = self._button("", "special", "language")
         self.settings_btn = self._button("", "special", "settings")
+        self.speak_btn = self._button("", "primary", "speak")
         self.help_btn = self._button("", "emergency", "help")
         control_row = QWidget()
-        control_row.setLayout(_row([
-            self.mode_btn, self.phrases_btn, self.settings_btn, self.language_btn, self.stop_btn, self.clear_btn,
-            self.speak_btn, self.help_btn,
-        ], [1, 1, 1, 1, 1, 1, 2, 1]))
+        control_row.setLayout(_row(
+            [self.space_btn, self.backspace_btn, self.phrases_btn, self.settings_btn, self.speak_btn, self.help_btn],
+            [3, 1, 1, 1, 2, 1],
+        ))
         root.addWidget(control_row, 1)
+        self.speaking = False
 
         self._letter_buttons: list[GazeButton] = []
         self.rebuild_letters()
@@ -128,7 +117,11 @@ class KeyboardPanel(QWidget):
             base = b.property("base")
             b.setText(base.upper() if upper and base.isalpha() else base)
             b.setProperty("value", b.text())
-        self.shift_btn.set_role("active" if upper else "special")
+
+    def set_speaking(self, speaking: bool) -> None:
+        if speaking != self.speaking:
+            self.speaking = speaking
+            self.speak_btn.setText(tr("stop" if speaking else "speak", self.lang))
 
     # ------------------------------------------------------------ state
     def set_language(self, lang: str) -> None:
@@ -167,17 +160,9 @@ class KeyboardPanel(QWidget):
 
     def retranslate(self) -> None:
         lang = self.lang
-        self.shift_btn.setText(tr("shift", lang))
-        self.symbols_btn.setText("abc" if self._symbols else ("123 " + ("àé" if lang != "en" else "?!")))
         self.space_btn.setText(tr("space", lang))
-        self.delete_word_btn.setText(tr("delete_word", lang))
-        self.undo_btn.setText(tr("undo", lang))
-        self.mode_btn.setText(tr("mode_words" if self.mode == "letters" else "mode_letters", lang))
-        self.phrases_btn.setText(tr("phrases", lang))
-        self.speak_btn.setText(tr("speak", lang))
         self.backspace_btn.setText(tr("delete", lang))
-        self.stop_btn.setText(tr("stop", lang))
-        self.clear_btn.setText(tr("clear", lang))
-        self.language_btn.setText(lang.upper())
+        self.phrases_btn.setText(tr("phrases", lang))
         self.settings_btn.setText(tr("settings", lang))
+        self.speak_btn.setText(tr("stop" if self.speaking else "speak", lang))
         self.help_btn.setText(tr("help", lang))

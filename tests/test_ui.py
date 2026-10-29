@@ -77,6 +77,11 @@ def look_at(w, qapp, button, seconds=1.0):
     gaze(w, qapp, 0.5, 0.02, 0.2)  # look away at the canvas (no button)
 
 
+def open_tool(w, qapp, name):
+    look_at(w, qapp, w.keyboard.settings_btn)
+    look_at(w, qapp, w.settings_page.tool_buttons[name])
+
+
 def key(w, value):
     return next(b for b in w.keyboard._letter_buttons if b.property("base") == value)
 
@@ -98,14 +103,14 @@ def test_type_accept_suggestion_and_speak_by_gaze(window, qapp):
 def test_clear_requires_gaze_confirmation(window, qapp):
     w = window
     w.buffer.text = "Some text"
-    look_at(w, qapp, w.keyboard.clear_btn)
+    open_tool(w, qapp, "clear")
     assert w.confirm.isVisible() and w.buffer.text == "Some text"
     # Keys under the overlay must not be selectable.
     look_at(w, qapp, w.keyboard.space_btn)
     assert w.buffer.text == "Some text"
     look_at(w, qapp, w.confirm.no_btn)
     assert not w.confirm.isVisible() and w.buffer.text == "Some text"
-    look_at(w, qapp, w.keyboard.clear_btn)
+    open_tool(w, qapp, "clear")
     look_at(w, qapp, w.confirm.yes_btn)
     assert w.buffer.text == ""
 
@@ -142,18 +147,18 @@ def test_pause_only_allows_resume(window, qapp):
 def test_language_switch_keeps_text_and_changes_layout(window, qapp):
     w = window
     w.buffer.text = "Hello "
-    look_at(w, qapp, w.keyboard.language_btn)
+    w._on_key("language", "")
     assert w.lang == "es" and w.buffer.text == "Hello "
     assert any(b.property("base") == "ñ" for b in w.keyboard._letter_buttons)
     assert w.keyboard.speak_btn.text().endswith("Hablar")
-    look_at(w, qapp, w.keyboard.language_btn)
+    w._on_key("language", "")
     assert w.lang == "ca"
     assert any(b.property("base") == "ç" for b in w.keyboard._letter_buttons)
 
 
 def test_word_mode_and_phrases(window, qapp):
     w = window
-    look_at(w, qapp, w.keyboard.mode_btn)
+    open_tool(w, qapp, "mode")
     assert w.keyboard.mode == "words"
     word = w.keyboard.word_buttons[0]
     text = word.text()

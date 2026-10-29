@@ -626,6 +626,7 @@ class MainWindow(QWidget):
 
     def _tick(self) -> None:
         self.ui_fps.tick()
+        self.keyboard.set_speaking(self.speech.is_speaking())
         now = time.monotonic()
         point, source, active, hold = self._current_point(now)
         self._last_source = source
@@ -737,6 +738,7 @@ class MainWindow(QWidget):
         else:
             self.keyboard.set_suggestions(fmt(self.predictor.suggest(prefix, prev, count)), count)
         self.keyboard.update_case(self.buffer.shift_active or (capitalize and not prefix))
+        self.settings_page.set_tool_state(self.keyboard._symbols, self.keyboard.mode)
 
     def _on_key(self, name: str, value: str) -> None:
         if name in CORRECTION_KEYS:
@@ -765,7 +767,10 @@ class MainWindow(QWidget):
             self._reload_phrases()
             self.pages.setCurrentWidget(self.phrases_page)
         elif name == "speak":
-            self.speak()
+            if self.speech.is_speaking():
+                self.speech.stop()
+            else:
+                self.speak()
         elif name == "stop":
             self.speech.stop()
         elif name == "clear":
@@ -839,7 +844,10 @@ class MainWindow(QWidget):
     # ============================================================= commands
     def _on_command(self, name: str) -> None:
         lang = self.lang
-        if name == "calibrate":
+        if name.startswith("key:"):
+            self.show_keyboard()
+            self._on_key(name[4:], "")
+        elif name == "calibrate":
             self.start_calibration("full")
         elif name == "calibrate_head":
             self.start_calibration("head")
